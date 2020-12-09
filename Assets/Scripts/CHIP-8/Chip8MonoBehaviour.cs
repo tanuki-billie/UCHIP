@@ -8,13 +8,10 @@ namespace Chip8
     {
         private Chip8 _emulator;
         [Header("Emulator")] [SerializeField] private string romPath;
+        [SerializeField] private Chip8InterpreterMode interpreterMode;
         [Header("Display")] [SerializeField] private Color backgroundColor = Color.black;
         [SerializeField] private Color foregroundColor = Color.white;
         [SerializeField] private RawImage display;
-        [Header("Debug")] [SerializeField] private Text disassembly;
-        [SerializeField] private Text registerDisplay;
-        [SerializeField] private Chip8RunMode runMode = Chip8RunMode.Update;
-        [SerializeField] private bool debugItems;
         private ulong _stepCount;
         public string disassemblyContents;
         private byte[] _romData;
@@ -35,7 +32,7 @@ namespace Chip8
             _romData = rom.bytes;
             // DisassembleROM();
 
-            _emulator.PowerAndLoadRom(_romData);
+            _emulator.PowerAndLoadRom(_romData, interpreterMode);
         }
 
         /*private void DisassembleROM()

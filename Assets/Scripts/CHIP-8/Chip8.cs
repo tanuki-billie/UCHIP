@@ -69,9 +69,10 @@ namespace Chip8
         ///     Loads a ROM into memory, then powers the virtual machine.
         /// </summary>
         /// <param name="romData">The ROM data stored as a byte array.</param>
-        public void PowerAndLoadRom(byte[] romData)
+        public void PowerAndLoadRom(byte[] romData, Chip8InterpreterMode interpreterMode = Chip8InterpreterMode.Schip)
         {
             Powered = false;
+            InterpreterMode = interpreterMode;
             Power();
             // Load ROM into memory
             for (var i = 0; i < romData.Length; i++) _memory[0x200 + i] = romData[i];
