@@ -54,77 +54,9 @@ namespace Chip8
             disassembly.text = disassemblyContents;
         }*/
 
-        private void UpdateRegistryDisplay()
-        {
-            if (!debugItems) return;
-            string result = string.Empty;
-            result += string.Format("<color=red>Step {0}</color>\n", _stepCount);
-            for (int i = 0; i < 0x10; i++)
-            {
-                result += string.Format("V{0:X1}: {1:X2}\n", i, _emulator.V[i]);
-            }
-
-            result += string.Format("\nI: {0:X4}\n", _emulator.I);
-            result += string.Format("PC: {0:X4}\n", _emulator.PC);
-            result += string.Format("SP: {0:X1}\n", _emulator.StackPointer);
-
-            for (int i = 0; i < _emulator.Stack.Length; i++)
-            {
-                if (_emulator.Stack[i] != 0)
-                {
-                    result += string.Format("<color=yellow>S{0:X1}: {1:X4}</color>\n", i, _emulator.Stack[i]);
-                }
-            }
-
-            registerDisplay.text = result;
-        }
-
-        private void DisplayInput()
-        {
-            if (!debugItems) return;
-            string result = string.Empty;
-            const string formatStringOff = "[{0}] ";
-            const string formatStringOn = "<color=red>[{0}]</color> ";
-
-            // First row
-            result += string.Format((_emulator.Input[1] ? formatStringOn : formatStringOff), 1);
-            result += string.Format((_emulator.Input[2] ? formatStringOn : formatStringOff), 2);
-            result += string.Format((_emulator.Input[3] ? formatStringOn : formatStringOff), 3);
-            result += string.Format((_emulator.Input[0xC] ? formatStringOn : formatStringOff), 'C');
-            result += '\n';
-            result += string.Format((_emulator.Input[4] ? formatStringOn : formatStringOff), 4);
-            result += string.Format((_emulator.Input[5] ? formatStringOn : formatStringOff), 5);
-            result += string.Format((_emulator.Input[6] ? formatStringOn : formatStringOff), 6);
-            result += string.Format((_emulator.Input[0xD] ? formatStringOn : formatStringOff), 'D');
-            result += '\n';
-            result += string.Format((_emulator.Input[7] ? formatStringOn : formatStringOff), 7);
-            result += string.Format((_emulator.Input[8] ? formatStringOn : formatStringOff), 8);
-            result += string.Format((_emulator.Input[9] ? formatStringOn : formatStringOff), 9);
-            result += string.Format((_emulator.Input[0xE] ? formatStringOn : formatStringOff), 'E');
-            result += '\n';
-            result += string.Format((_emulator.Input[0xA] ? formatStringOn : formatStringOff), 'A');
-            result += string.Format((_emulator.Input[0] ? formatStringOn : formatStringOff), 0);
-            result += string.Format((_emulator.Input[0xB] ? formatStringOn : formatStringOff), 'B');
-            result += string.Format((_emulator.Input[0xF] ? formatStringOn : formatStringOff), 'F');
-
-            disassembly.text = result;
-        }
-
-        void FixedUpdate()
-        {
-            if (runMode == Chip8RunMode.FixedUpdate)
-            {
-                Step();
-            }
-        }
-
         void Update()
         {
-            DisplayInput();
-            if (runMode == Chip8RunMode.Update)
-            {
                 Step();
-            }
         }
 
         void Step()
@@ -136,7 +68,6 @@ namespace Chip8
                 if (_emulator.Draw)
                     display.texture = RenderChipFrame(_emulator.Display, backgroundColor, foregroundColor);
                 // RenderFrame(emulator.Display);
-                UpdateRegistryDisplay();
             }
         }
 
@@ -294,7 +225,7 @@ namespace Chip8
 
         public void InputStep(InputAction.CallbackContext context)
         {
-            if (context.performed && runMode == Chip8RunMode.Step)
+            if (context.performed)
                 Step();
         }
 
