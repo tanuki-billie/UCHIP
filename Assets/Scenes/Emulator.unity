@@ -814,14 +814,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c2e90d60b1b34af88b5c59dcdda831a2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  romPath: ROMs/Blitz.ch8
+  romPath: ROMs/Pong.ch8
+  interpreterMode: 1
   backgroundColor: {r: 0.17214599, g: 0.4056604, b: 0.02104842, a: 1}
   foregroundColor: {r: 0.53328085, g: 1, b: 0.23137254, a: 1}
   display: {fileID: 195597817}
-  disassembly: {fileID: 0}
-  registerDisplay: {fileID: 0}
-  runMode: 1
-  debugItems: 0
+  audioFrequency: 500
+  audioSampleRate: 44100
+  audioWavelength: 1000
   disassemblyContents: 
 --- !u!1 &2110771965
 GameObject:

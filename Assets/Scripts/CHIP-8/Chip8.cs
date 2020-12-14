@@ -142,11 +142,11 @@ namespace Chip8
                     break;
                 case 0x1000:
                     // Jump to address
-                    JumpToAddress((ushort) (_opcode & 0xFFF));
+                    JumpToAddress(_opcode);
                     break;
                 case 0x2000:
                     // Call subroutine
-                    CallSubroutine((ushort) (_opcode & 0xFFF));
+                    CallSubroutine(_opcode);
                     break;
                 case 0x3000:
                     // Skip next instruction if equal
@@ -325,9 +325,18 @@ namespace Chip8
 
             PC += _next;
             // Delay
+            
+        }
+
+        /// <summary>
+        ///     Decrements the timers. This should be done at 60 Hz.
+        /// </summary>
+        public void DecrementTimers()
+        {
             if (Delay > 0) Delay--;
             if (Sound > 0) Sound--;
         }
+        
 
         // The part where we implement the opcodes
 
@@ -376,7 +385,7 @@ namespace Chip8
         {
             Stack[StackPointer] = PC;
             ++StackPointer;
-            PC = address;
+            PC = (ushort) (address & 0xFFF);
             _next = 0;
         }
 

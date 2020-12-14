@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -12,6 +13,12 @@ namespace Chip8
         [Header("Display")] [SerializeField] private Color backgroundColor = Color.black;
         [SerializeField] private Color foregroundColor = Color.white;
         [SerializeField] private RawImage display;
+        [Header("Audio")] private AudioSource _source;
+        [SerializeField] private float audioFrequency = 440f;
+        [SerializeField] private float audioSampleRate = 44100;
+        [SerializeField] private float audioWavelength = 0.16f;
+        private int _timeIndex = 0;
+        
         private ulong _stepCount;
         public string disassemblyContents;
         private byte[] _romData;
@@ -20,6 +27,12 @@ namespace Chip8
 
         private void Start()
         {
+            // Setup AudioSource
+            _source = gameObject.AddComponent<AudioSource>();
+            _source.playOnAwake = false;
+            _source.spatialBlend = 0;
+            _source.Stop();
+            // Load ROM into emulator
             var rom = Resources.Load<TextAsset>(romPath);
             _emulator = new Chip8();
             if (rom == null)
@@ -56,7 +69,29 @@ namespace Chip8
 
         void Update()
         {
-                Step();
+            Step();
+            
+        }
+
+        void FixedUpdate()
+        {
+            _emulator.DecrementTimers();
+            if (_emulator.Sound > 0)
+            {
+                if (!_source.isPlaying)
+                {
+                    _timeIndex = 0;
+                    _source.Play();
+                }
+                else
+                {
+                    _source.Stop();
+                }
+            }
+            else
+            {
+                _source.Stop();
+            }
         }
 
         void Step()
@@ -68,6 +103,23 @@ namespace Chip8
                 if (_emulator.Draw)
                     display.texture = RenderChipFrame(_emulator.Display, backgroundColor, foregroundColor);
                 // RenderFrame(emulator.Display);
+            }
+        }
+
+        private void OnAudioFilterRead(float[] data, int channels)
+        {
+            for (int i = 0; i < data.Length; i += channels)
+            {
+                data[i] = GenerateSine(_timeIndex, audioFrequency, audioSampleRate);
+                if(channels == 2)
+                    data[i+1] = GenerateSine(_timeIndex, audioFrequency, audioSampleRate);
+
+                _timeIndex++;
+
+                if (_timeIndex >= audioSampleRate * audioWavelength * _emulator.Sound)
+                {
+                    _timeIndex = 0;
+                }
             }
         }
 
@@ -86,6 +138,11 @@ namespace Chip8
 
             result.Apply(false);
             return result;
+        }
+
+        public static float GenerateSine(int time, float frequency, float sampleRate = 44100f)
+        {
+            return Mathf.Sin(2 * Mathf.PI * time * frequency / sampleRate);
         }
 
         #endregion
