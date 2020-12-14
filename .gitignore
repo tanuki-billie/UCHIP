@@ -72,3 +72,6 @@ crashlytics-build.properties
 
 # Ignore Rider IDE user settings
 /.idea/
+
+# UCHIP: Make sure ROM resources are not included (no copyright issues!)
+/[Aa]ssets/[Rr]esources/ROMS/*
