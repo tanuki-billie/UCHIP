@@ -75,3 +75,6 @@ crashlytics-build.properties
 
 # UCHIP: Make sure ROM resources are not included (no copyright issues!)
 /[Aa]ssets/[Rr]esources/ROMS/*
+
+# UCHIP: TMP
+/[Aa]ssets/TextMesh Pro/**/*
