@@ -6,7 +6,7 @@ namespace Chip8
     public class Chip8
     {
         // The memory of the Chip-8 system
-        private readonly byte[] _memory = new byte[0x1000];
+        private byte[] _memory = new byte[0x1000];
 
         // The default fontset used by the Chip-8.
         private static readonly byte[] FontSet =
@@ -174,14 +174,17 @@ namespace Chip8
                             break;
                         case 0x1:
                             V[(_opcode & 0xF00) >> 8] |= V[(_opcode & 0xF0) >> 4];
+                            if (InterpreterMode == Chip8InterpreterMode.Schip) V[0xF] = 0;
                             _next = 2;
                             break;
                         case 0x2:
                             V[(_opcode & 0xF00) >> 8] &= V[(_opcode & 0xF0) >> 4];
+                            if (InterpreterMode == Chip8InterpreterMode.Schip) V[0xF] = 0;
                             _next = 2;
                             break;
                         case 0x3:
                             V[(_opcode & 0xF00) >> 8] ^= V[(_opcode & 0xF0) >> 4];
+                            if (InterpreterMode == Chip8InterpreterMode.Schip) V[0xF] = 0;
                             _next = 2;
                             break;
                         case 0x4:
@@ -596,5 +599,19 @@ namespace Chip8
         {
             Opcode = opcode;
         }
+    }
+
+    /// <summary>
+    /// EmulationState contains a state of the emulator. This can be used in order to save and load system states.
+    /// </summary>
+    public struct EmulationState
+    {
+        public byte[] V;
+        public byte[] Memory;
+        public ushort I, PC;
+        public byte Delay, Sound, SP;
+        public ushort[] Stack;
+        public bool[] Input;
+        public byte[,] Display;
     }
 }
