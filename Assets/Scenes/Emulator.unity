@@ -336,6 +336,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
+  m_PresetInfoIsWorld: 0
 --- !u!223 &1052088085
 Canvas:
   m_ObjectHideFlags: 0
@@ -815,8 +816,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   romPath: ROMs/Blitz.ch8
-  interpreterMode: 1
-  backgroundColor: {r: 0.17214599, g: 0.4056604, b: 0.02104842, a: 1}
+  interpreterMode: 0
+  backgroundColor: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 1}
   foregroundColor: {r: 0.53328085, g: 1, b: 0.23137254, a: 1}
   display: {fileID: 195597817}
   audioFrequency: 500

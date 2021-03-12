@@ -135,8 +135,9 @@ namespace Chip8
                             ReturnFromSubroutine();
                             break;
                         default:
-                            // Illegal opcode occured
-                            throw new IllegalOpcodeException("Illegal opcode called in emulation!", _opcode);
+                            //0x0NNN - jump to machine code instruction
+                            JumpToAddress(_opcode);
+                            break;
                     }
 
                     break;
@@ -150,14 +151,15 @@ namespace Chip8
                     break;
                 case 0x3000:
                     // Skip next instruction if equal
-                    SkipInstruction((_opcode & 0xF00) >> 8, (byte) _opcode, true);
+                    // SkipInstruction((_opcode & 0xF00) >> 8, (byte) _opcode, true);
+                    SkipInstructionIfEquals(V[(_opcode & 0xF00) >> 8], (byte) _opcode);
                     break;
                 case 0x4000:
                     // Skip next instruction if equal
-                    SkipInstruction((_opcode & 0xF00) >> 8, (byte) _opcode, false);
+                    SkipInstructionIfNotEquals(V[(_opcode & 0xF00) >> 8], (byte) _opcode);
                     break;
                 case 0x5000:
-                    SkipInstruction((_opcode & 0xF00) >> 8, V[(_opcode & 0xF0) >> 4], true);
+                    SkipInstructionIfEquals(V[(_opcode & 0xF00) >> 8], V[(_opcode & 0xF0) >> 4]);
                     break;
                 case 0x6000:
                     SetRegister((_opcode & 0xF00) >> 8, (byte) _opcode);
@@ -195,18 +197,18 @@ namespace Chip8
                             break;
                         case 0x6:
                             if (InterpreterMode == Chip8InterpreterMode.Schip)
-                                ShiftRegisters((_opcode & 0xF00) >> 8);
+                                ShiftRegisters((_opcode & 0xF00) >> 8, true);
                             else if (InterpreterMode == Chip8InterpreterMode.Cosmac)
-                                ShiftRegistersAlt((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4);
+                                ShiftRegistersAlt((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4, true);
                             break;
                         case 0x7:
                             SubRegisters((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4, true);
                             break;
                         case 0xE:
                             if (InterpreterMode == Chip8InterpreterMode.Schip)
-                                ShiftRegisters((_opcode & 0xF00) >> 8, true);
+                                ShiftRegisters((_opcode & 0xF00) >> 8);
                             else if (InterpreterMode == Chip8InterpreterMode.Cosmac)
-                                ShiftRegistersAlt((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4, true);
+                                ShiftRegistersAlt((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4);
                             break;
                         default:
                             // Error!
@@ -215,7 +217,7 @@ namespace Chip8
 
                     break;
                 case 0x9000:
-                    SkipInstruction((_opcode & 0xF00) >> 8, V[(_opcode & 0xF0) >> 4], false);
+                    SkipInstructionIfNotEquals(V[(_opcode & 0xF00) >> 8], V[(_opcode & 0xF0) >> 4]);
                     break;
                 case 0xA000:
                     I = (ushort) (_opcode & 0xFFF);
@@ -365,8 +367,7 @@ namespace Chip8
         /// </summary>
         private void ReturnFromSubroutine()
         {
-            --StackPointer;
-            PC = Stack[StackPointer];
+            PC = Stack[StackPointer--];
             _next = 2;
         }
 
@@ -376,6 +377,7 @@ namespace Chip8
         /// <param name="address">The memory address to jump to.</param>
         private void JumpToAddress(ushort address)
         {
+            // Make sure that we only set the part of the opcode that is the address, and nothing else.
             PC = (ushort) (address & 0xFFF);
             _next = 0;
         }
@@ -386,8 +388,7 @@ namespace Chip8
         /// <param name="address">The memory address where the subroutine is located.</param>
         private void CallSubroutine(ushort address)
         {
-            Stack[StackPointer] = PC;
-            ++StackPointer;
+            Stack[++StackPointer] = PC;
             PC = (ushort) (address & 0xFFF);
             _next = 0;
         }
@@ -406,6 +407,16 @@ namespace Chip8
             if (!((V[register] == value) ^ comparator))
                 _next = 4;
             else _next = 2;
+        }
+
+        private void SkipInstructionIfEquals(byte val1, byte val2)
+        {
+            _next = (val1 == val2) ? (ushort) 4 : (ushort) 2;
+        }
+
+        private void SkipInstructionIfNotEquals(byte val1, byte val2)
+        {
+            _next = (val1 != val2) ? (ushort) 4 : (ushort) 2;
         }
 
         /// <summary>
@@ -472,7 +483,7 @@ namespace Chip8
         private void SubRegisters(int x, int y, bool useModifiedBehavior = false)
         {
             var doesBorrow = useModifiedBehavior ? V[x] > V[y] : V[x] < V[y];
-            V[0xF] = !doesBorrow ? (byte) 1 : (byte) 0;
+            V[0xF] = !doesBorrow ? (byte)1 : (byte)0;
 
             V[x] = useModifiedBehavior ? (byte) (V[y] - V[x]) : (byte) (V[x] - V[y]);
             _next = 2;
@@ -486,13 +497,13 @@ namespace Chip8
         /// <param name="register">The register to shift</param>
         /// <param name="useModifiedBehavior">
         ///     Modifies the behavior. If set to true, shifts the specified register left and stores
-        ///     the most siginifant bit prior to the shift in register F.
+        ///     the most significant bit prior to the shift in register F.
         /// </param>
         private void ShiftRegisters(int register, bool useModifiedBehavior = false)
         {
-            if (useModifiedBehavior)
+            if (!useModifiedBehavior)
             {
-                V[0xF] = (byte) (V[register] >> 7);
+                V[0xF] = (byte) ((V[register] & 0x80) >> 7);
                 V[register] = (byte) (V[register] << 1);
             }
             else
@@ -513,13 +524,13 @@ namespace Chip8
         /// <param name="y">The register to be shifted.</param>
         /// <param name="useModifiedBehavior">
         ///     Modifies the behavior. If set to true, shifts the specified register left and stores
-        ///     the most siginifant bit prior to the shift in register F.
+        ///     the most significant bit prior to the shift in register F.
         /// </param>
         private void ShiftRegistersAlt(int x, int y, bool useModifiedBehavior = false)
         {
             if (useModifiedBehavior)
             {
-                V[0xF] = (byte) (V[y] >> 7);
+                V[0xF] = (byte) ((V[y] & 0x80) >> 7);
                 V[x] = (byte) (V[y] << 1);
             }
             else
