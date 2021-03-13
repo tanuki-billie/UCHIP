@@ -409,6 +409,11 @@ namespace Chip8
             else _next = 2;
         }
 
+        /// <summary>
+        /// Skips the next instruction if the two values are equal. Note that both values are literals - thus, one must take care to retrive the values of specific registers before calling this function.
+        /// </summary>
+        /// <param name="val1">The first value.</param>
+        /// <param name="val2">The second value.</param>
         private void SkipInstructionIfEquals(byte val1, byte val2)
         {
             _next = (val1 == val2) ? (ushort) 4 : (ushort) 2;
