@@ -83,10 +83,6 @@ namespace Chip8
                     _timeIndex = 0;
                     _source.Play();
                 }
-                else
-                {
-                    _source.Stop();
-                }
             }
             else
             {

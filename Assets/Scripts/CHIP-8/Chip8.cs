@@ -6,7 +6,7 @@ namespace Chip8
     public class Chip8
     {
         // The memory of the Chip-8 system
-        private byte[] _memory = new byte[0x1000];
+        private byte[] memory = new byte[0x1000];
 
         // The default fontset used by the Chip-8.
         private static readonly byte[] FontSet =
@@ -75,7 +75,7 @@ namespace Chip8
             InterpreterMode = interpreterMode;
             Power();
             // Load ROM into memory
-            for (var i = 0; i < romData.Length; i++) _memory[0x200 + i] = romData[i];
+            for (var i = 0; i < romData.Length; i++) memory[0x200 + i] = romData[i];
             Powered = true;
         }
 
@@ -91,7 +91,7 @@ namespace Chip8
             // Clear memory, display, stack, and registers
             for (var i = 0; i < 0x1000; i++)
             {
-                _memory[i] = 0;
+                memory[i] = 0;
                 if (i < 0x10)
                 {
                     Stack[i] = 0;
@@ -105,7 +105,7 @@ namespace Chip8
             for (var x = 0; x < 64; x++)
                 Display[x, y] = 0;
 
-            for (var i = 0; i < 80; i++) _memory[i] = FontSet[i];
+            for (var i = 0; i < 80; i++) memory[i] = FontSet[i];
 
             // Reset timers
             Delay = Sound = 0;
@@ -119,7 +119,7 @@ namespace Chip8
         {
             // Reset draw flag to false
             Draw = false;
-            _opcode = (ushort) ((_memory[PC] << 8) | _memory[PC + 1]); // Turns two bytes into a single short
+            _opcode = (ushort) ((memory[PC] << 8) | memory[PC + 1]); // Turns two bytes into a single short
             // Determine the opcode to run
             switch (_opcode & 0xF000)
             {
@@ -297,14 +297,14 @@ namespace Chip8
                             break;
                         case 0x33:
                             // Store BCD of Vx at mem[i], mem[i+1], and mem[i+2]
-                            _memory[I] = (byte) (V[register] / 100);
-                            _memory[I + 1] = (byte) (V[register] / 10 % 10);
-                            _memory[I + 2] = (byte) (V[register] % 10);
+                            memory[I] = (byte) (V[register] / 100);
+                            memory[I + 1] = (byte) (V[register] / 10 % 10);
+                            memory[I + 2] = (byte) (V[register] % 10);
                             _next = 2;
                             break;
                         case 0x55:
                             // Store registers V0 - Vx in memory starting at I
-                            for (var i = 0; i <= register; i++) _memory[I + i] = V[i];
+                            for (var i = 0; i <= register; i++) memory[I + i] = V[i];
                             // Interpreter behavior
                             if (InterpreterMode == Chip8InterpreterMode.Cosmac)
                                 I += (ushort) (register + 1);
@@ -313,7 +313,7 @@ namespace Chip8
                             break;
                         case 0x65:
                             // Read registers V0 - Vx from memory starting at I
-                            for (var i = 0; i <= register; i++) V[i] = _memory[I + i];
+                            for (var i = 0; i <= register; i++) V[i] = memory[I + i];
 
                             // Interpreter behavior
                             if (InterpreterMode == Chip8InterpreterMode.Cosmac)
@@ -560,7 +560,7 @@ namespace Chip8
 
             for (var rY = 0; rY < n; rY++)
             {
-                ushort pixel = _memory[I + rY];
+                ushort pixel = memory[I + rY];
                 for (var rX = 0; rX < 8; rX++)
                     if ((pixel & (0x80 >> rX)) != 0)
                     {
