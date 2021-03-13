@@ -117,6 +117,7 @@ namespace Chip8
         /// <exception cref="IllegalOpcodeException">Thrown upon encountering an unexpected or unsupported opcode.</exception>
         private void Cycle()
         {
+            _next = 2;
             // Reset draw flag to false
             Draw = false;
             _opcode = (ushort) ((memory[PC] << 8) | memory[PC + 1]); // Turns two bytes into a single short
@@ -172,22 +173,18 @@ namespace Chip8
                     {
                         case 0x0:
                             V[(_opcode & 0xF00) >> 8] = V[(_opcode & 0xF0) >> 4];
-                            _next = 2;
                             break;
                         case 0x1:
                             V[(_opcode & 0xF00) >> 8] |= V[(_opcode & 0xF0) >> 4];
                             if (InterpreterMode == Chip8InterpreterMode.Schip) V[0xF] = 0;
-                            _next = 2;
                             break;
                         case 0x2:
                             V[(_opcode & 0xF00) >> 8] &= V[(_opcode & 0xF0) >> 4];
                             if (InterpreterMode == Chip8InterpreterMode.Schip) V[0xF] = 0;
-                            _next = 2;
                             break;
                         case 0x3:
                             V[(_opcode & 0xF00) >> 8] ^= V[(_opcode & 0xF0) >> 4];
                             if (InterpreterMode == Chip8InterpreterMode.Schip) V[0xF] = 0;
-                            _next = 2;
                             break;
                         case 0x4:
                             AddRegisters((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4);
@@ -221,7 +218,6 @@ namespace Chip8
                     break;
                 case 0xA000:
                     I = (ushort) (_opcode & 0xFFF);
-                    _next = 2;
                     break;
                 case 0xB000:
                     JumpToAddress((ushort) ((_opcode & 0xFFF) + V[0]));
@@ -236,12 +232,10 @@ namespace Chip8
                     switch (_opcode & 0xFF)
                     {
                         case 0x9E:
-                            _next = 2;
                             if (Input[V[(_opcode & 0xF00) >> 8]])
                                 _next = 4;
                             break;
                         case 0xA1:
-                            _next = 2;
                             if (!Input[V[(_opcode & 0xF00) >> 8]])
                                 _next = 4;
                             break;
@@ -274,12 +268,10 @@ namespace Chip8
                         case 0x15:
                             // Set delay timer to Vx
                             Delay = V[register];
-                            _next = 2;
                             break;
                         case 0x18:
                             // Set sound timer to Vx
                             Sound = V[register];
-                            _next = 2;
                             break;
                         case 0x1E:
                             // Add I and Vx, store in I
@@ -288,19 +280,16 @@ namespace Chip8
                             else
                                 V[0xF] = 0;
                             I += V[register];
-                            _next = 2;
                             break;
                         case 0x29:
                             // Set I to location of hex sprite for fontset
                             I = (ushort) (5 * V[register]);
-                            _next = 2;
                             break;
                         case 0x33:
                             // Store BCD of Vx at mem[i], mem[i+1], and mem[i+2]
                             memory[I] = (byte) (V[register] / 100);
                             memory[I + 1] = (byte) (V[register] / 10 % 10);
                             memory[I + 2] = (byte) (V[register] % 10);
-                            _next = 2;
                             break;
                         case 0x55:
                             // Store registers V0 - Vx in memory starting at I
@@ -309,7 +298,6 @@ namespace Chip8
                             if (InterpreterMode == Chip8InterpreterMode.Cosmac)
                                 I += (ushort) (register + 1);
 
-                            _next = 2;
                             break;
                         case 0x65:
                             // Read registers V0 - Vx from memory starting at I
@@ -319,7 +307,6 @@ namespace Chip8
                             if (InterpreterMode == Chip8InterpreterMode.Cosmac)
                                 I += (ushort) (register + 1);
 
-                            _next = 2;
                             break;
                     }
 
@@ -358,7 +345,6 @@ namespace Chip8
                 Display[x, y] = 0;
 
             Draw = true;
-            _next = 2;
         }
 
         /// <summary>
@@ -368,7 +354,6 @@ namespace Chip8
         private void ReturnFromSubroutine()
         {
             PC = Stack[StackPointer--];
-            _next = 2;
         }
 
         /// <summary>
@@ -391,22 +376,6 @@ namespace Chip8
             Stack[++StackPointer] = PC;
             PC = (ushort) (address & 0xFFF);
             _next = 0;
-        }
-
-        /// <summary>
-        ///     Generic function to determine whether or not to skip an instruction.
-        /// </summary>
-        /// <param name="register">The register to check.</param>
-        /// <param name="value">The value to check against.</param>
-        /// <param name="comparator">
-        ///     The comparasion to check against. If true, this means that the instruction will be skipped if
-        ///     the register's value and the provided value are equal.
-        /// </param>
-        private void SkipInstruction(int register, byte value, bool comparator)
-        {
-            if (!((V[register] == value) ^ comparator))
-                _next = 4;
-            else _next = 2;
         }
 
         /// <summary>
@@ -445,7 +414,6 @@ namespace Chip8
             }
 
             V[register] = value;
-            _next = 2;
         }
 
         /// <summary>
@@ -456,7 +424,6 @@ namespace Chip8
         private void AddRegister(int register, byte value)
         {
             V[register] += value;
-            _next = 2;
         }
 
         /// <summary>
@@ -467,13 +434,7 @@ namespace Chip8
         private void AddRegisters(int x, int y)
         {
             V[x] = (byte) (V[x] + V[y]);
-            if (V[y] > 0xFF - V[x])
-                V[0xF] = 1;
-            else
-                V[0xF] = 0;
-
-
-            _next = 2;
+            V[0xF] = (V[y] > 0xFF - V[x]) ? (byte) 1 : (byte) 0;
         }
 
         /// <summary>
@@ -491,7 +452,6 @@ namespace Chip8
             V[0xF] = !doesBorrow ? (byte)1 : (byte)0;
 
             V[x] = useModifiedBehavior ? (byte) (V[y] - V[x]) : (byte) (V[x] - V[y]);
-            _next = 2;
         }
 
         /// <summary>
@@ -516,8 +476,6 @@ namespace Chip8
                 V[0xF] = (byte) (V[register] & 0x1);
                 V[register] = (byte) (V[register] >> 1);
             }
-
-            _next = 2;
         }
 
         /// <summary>
@@ -543,8 +501,6 @@ namespace Chip8
                 V[0xF] = (byte) (V[y] & 0x1);
                 V[x] = (byte) (V[y] >> 1);
             }
-
-            _next = 2;
         }
 
         /// <summary>
@@ -576,7 +532,6 @@ namespace Chip8
             }
 
             Draw = true;
-            _next = 2;
         }
 
         #endregion
