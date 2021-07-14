@@ -6,13 +6,26 @@ namespace Chip8
     public class Chip8
     {
         #region Opcodes
+        /// <summary>
+        /// Maps most main opcodes to a dictionary for quick lookup and execution.
+        /// </summary>
         private readonly Dictionary<byte, Action<Opcode>> opcodes;
+        /// <summary>
+        /// Maps miscellaneous opcodes (0xFXXX) to a dictionary for quick lookup and execution.
+        /// </summary>
         private readonly Dictionary<byte, Action<Opcode>> opcodesMisc;
+        /// <summary>
+        /// Maps arithmetic opcodes (0x8XXX) to a dictionary for quick lookup and execution.
+        /// </summary>
         private readonly Dictionary<byte, Action<Opcode>> opcodesArithmetic;
         #endregion
-        // Holds the current state of the emulator. Useful for save states!
+        /// <summary>
+        /// Contains the current state of the interpreter. You can use this for save states.
+        /// </summary>
         public EmulationState state;
-        // The default fontset used by the Chip-8.
+        /// <summary>
+        /// Data for the fontset used by the interpreter.
+        /// </summary>
         private static readonly byte[] FontSet =
         {
             0xF0, 0x90, 0x90, 0x90, 0xF0, //0
@@ -32,18 +45,27 @@ namespace Chip8
             0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
             0xF0, 0x80, 0xF0, 0x80, 0x80 //F
         };
-        
-
-        // Determines whether the machine is powered or not.
+        /// <summary>
+        /// Determines whether the interpreter is processing commands or not.
+        /// </summary>
         public bool Powered;
-
-        // The interpreter mode. There are differences between the SCHIP mode and the COSMAC mode. All information regarding
-        // these two different modes can be found here: https://github.com/mattmikolay/chip-8/wiki/CHIP%E2%80%908-Instruction-Set
+        /// <summary>
+        /// The interpreter mode. There are various differences between the different available interpreter modes, each with their own unique quirks.
+        /// For more information, please visit https://chip-8.github.io/extensions/
+        /// </summary>
         public Chip8InterpreterMode InterpreterMode;
-
-        // Determines whether the screen should be redrawn or not. Usually only 00E0 and DXYN opcodes should set this to true.
+        /// <summary>
+        /// Flag to signal when a change to the display has been made.
+        /// </summary>
+        /// <remarks>
+        /// In your own renderer, this can be used for a <b>massive</b> performance boost.
+        /// </remarks>
         public bool Draw { get; private set; }
 
+        /// <summary>
+        /// Creates a new instance of a CHIP-8 interpreter. You must power the system before you can start running a ROM.
+        /// </summary>
+        /// <param name="interpreterMode">The interpreter mode to use for this specific interpreter.</param>
         public Chip8(Chip8InterpreterMode interpreterMode = Chip8InterpreterMode.Schip)
         {
             InterpreterMode = interpreterMode;
@@ -98,23 +120,23 @@ namespace Chip8
         }
 
         /// <summary>
-        ///     Loads a ROM into memory, then powers the virtual machine.
+        /// Loads a ROM into memory, then powers the interpreter.
         /// </summary>
         /// <param name="romData">The ROM data stored as a byte array.</param>
         public void PowerAndLoadRom(byte[] romData, Chip8InterpreterMode interpreterMode = Chip8InterpreterMode.Schip)
         {
             Powered = false;
             InterpreterMode = interpreterMode;
-            Power();
+            Reset();
             // Load ROM into memory
             for (var i = 0; i < romData.Length; i++) state.Memory[0x200 + i] = romData[i];
             Powered = true;
         }
 
         /// <summary>
-        ///     Sets up the virtual machine to ensure that it is in the correct operational state before running any program.
+        /// Resets the interpreter to a known state.
         /// </summary>
-        private void Power()
+        private void Reset()
         {
             // Reset pc, opcode reading, I, and sp
             state.PC = 0x200;
@@ -142,11 +164,17 @@ namespace Chip8
             state.Delay = state.Sound = 0;
         }
 
+        /// <summary>
+        /// Seperate function to write the fontset to memory.
+        /// </summary>
         private void WriteFontset()
         {
             for (var i = 0; i < 80; i++) state.Memory[i] = FontSet[i];
         }
 
+        /// <summary>
+        /// Emulates a cycle in the interpreter.
+        /// </summary>
         public void Cycle()
         {
             Draw = false;
@@ -155,17 +183,28 @@ namespace Chip8
             opcodes[(byte)(op.opcode >> 12)](op);
         }
 
+        /// <summary>
+        /// Fetches an opcode from memory.
+        /// </summary>
+        /// <returns>The next opcode in memory.</returns>
         private Opcode Fetch()
         {
             return new Opcode((ushort)((state.Memory[state.PC] << 8) | state.Memory[state.PC + 1]));
         }
 
+        /// <summary>
+        /// Decrements both the sound and delay timers, if able.
+        /// </summary>
         public void DecrementTimers()
         {
             if(state.Sound > 0) state.Sound--;
             if(state.Delay > 0) state.Delay--;
         }
         #region Standard Opcodes
+        /// <summary>
+        /// Various interpreter system commands. This includes screen clear (00E0) and return from subroutine (00EE).
+        /// </summary>
+        /// <param name="data">The opcode.</param>
         private void InterpreterSystemCommands(Opcode data)
         {
             switch(data.NN)
@@ -186,57 +225,107 @@ namespace Chip8
             }
         }
 
+        /// <summary>
+        /// Jumps to the specified address in memory.
+        /// </summary>
+        /// <param name="data">The opcode. Uses the last three nibbles to determine the jump address.</param>
         private void Jump(Opcode data)
         {
             state.PC = data.NNN;
         }
 
+        /// <summary>
+        /// Pushes the current PC to the stack, then jumps to the specified address in memory.
+        /// </summary>
+        /// <param name="data">The opcode. Uses the last three nibbles to determine the jump address.</param>
         private void CallSubroutine(Opcode data)
         {
             state.Stack[++state.SP] = state.PC;
             state.PC = data.NNN;
         }
-
+        /// <summary>
+        /// Skips the next instruction if the specified register equals the immediate value.
+        /// </summary>
+        /// <param name="data">The opcode. Uses the second nibble for determining the register, and the second byte for the immediate value.</param>
         private void SkipIfRegisterEqualsImmediate(Opcode data)
         {
             if(state.V[data.X] == data.NN)
                 state.PC += 2;
         }
+        /// <summary>
+        /// Skips the next instruction if the specified register does not equal the immediate value.
+        /// </summary>
+        /// <param name="data">The opcode. Uses the second nibble for determining the register, and the second byte for the immediate value.</param>
         private void SkipIfRegisterNotEqualsImmediate(Opcode data)
         {
             if(state.V[data.X] != data.NN)
                 state.PC += 2;
         }
+        /// <summary>
+        /// Skips the next instruction if the specified registers are equal.
+        /// </summary>
+        /// <param name="data">The opcode. Uses the second and third nibbles for determining which registers to compare.</param>
         private void SkipIfRegisterEqualsRegister(Opcode data)
         {
             if(state.V[data.X] == state.V[data.Y])
                 state.PC += 2;
         }
+        /// <summary>
+        /// Loads an immediate value into a register.
+        /// </summary>
+        /// <param name="data">The opcode. Uses the second nibble for determining the register, and the second byte for the immediate value.</param>
         private void LoadImmediate(Opcode data)
         {
             state.V[data.X] = data.NN;
         }
+        /// <summary>
+        /// Adds an immediate value to a register's curent value.
+        /// </summary>
+        /// <param name="data">The opcode. Uses the second nibble for determining the register, and the second byte for the immediate value.</param>
+        /// <remarks>The flag register is not modified by this operation.</remarks>
         private void AddImmediate(Opcode data)
         {
             state.V[data.X] += data.NN;
         }
+        /// <summary>
+        /// Skips the next instruction if the specified registers are not equal.
+        /// </summary>
+        /// <param name="data">The opcode. Uses the second and third nibbles for determining which registers to compare.</param>
         private void SkipIfRegisterNotEqualsRegister(Opcode data)
         {
             if(state.V[data.X] != state.V[data.Y])
                 state.PC += 2;
         }
+        /// <summary>
+        /// Loads an immediate value into the index register.
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining the address.</param>
         private void LoadIndexImmediate(Opcode data)
         {
             state.I = data.NNN;
         }
+        /// <summary>
+        /// Jumps to an address offset by the amount specified in a register.
+        /// </summary>
+        /// <param name="data">The opcode. Used to determine the address.</param>
+        /// <remarks> In SCHIP mode, the register used is determined by the first nibble. In Cosmac VIP and Octo modes, register 0 is ued.</remarks>
         private void JumpOffset(Opcode data)
         {
             state.PC = (ushort)((InterpreterMode == Chip8InterpreterMode.Schip) ? data.NNN + state.V[(data.NNN >> 8) & 0xF] : data.NNN + state.V[0]);
         }
+        /// <summary>
+        /// Loads a random value into a register with mask NN.
+        /// </summary>
+        /// <param name="data">The opcode. Uses the second nibble to determine register and the second byte as the mask.</param>
         private void LoadRandom(Opcode data)
         {
             state.V[data.X] = (byte)(UnityEngine.Random.Range(0, 255) & data.NN);
         }
+        /// <summary>
+        /// Draws a sprite to the display using XOR. If any pixels are turned off, register F is set to 1. Otherwise, it is set to 0.
+        /// </summary>
+        /// <param name="data">The opcode. Used to determine the registers that determine the sprite position, as well as how many lines of a sprite to draw.</param>
+        /// <remarks> The sprite is loaded from the index register. </remarks>
         private void DrawSprite(Opcode data)
         {
             // Oh boy.
@@ -260,6 +349,11 @@ namespace Chip8
             }
             Draw = true;
         }
+        /// <summary>
+        /// Handles skipping code based on input. Handles if input is pressed (EX9E) or not pressed (EXA1).
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining what register determines what key to check, and the instruction to execute.</param>
+        /// <exception cref="IllegalOpcodeException">Thrown when an illegal opcode is found.</exception>
         private void SkipInput(Opcode data)
         {
             switch(data.NN)
@@ -274,6 +368,11 @@ namespace Chip8
                     throw new IllegalOpcodeException($"Illegal input opcode {data.opcode:X4}", data.opcode);
             }
         }
+        /// <summary>
+        /// Helper function for execution of arithmetic instructions.
+        /// </summary>
+        /// <param name="data">The opcode.</param>
+        /// <exception cref="IllegalOpcodeException">Thrown when an illegal opcode is found.</exception>
         private void Arithmetic(Opcode data)
         {
             try
@@ -286,6 +385,11 @@ namespace Chip8
                 throw new IllegalOpcodeException($"Illegal arithmetic opcode {data.opcode:X4}", data.opcode);
             }
         }
+        /// <summary>
+        /// Helper function for execution of misceleanous instructions.
+        /// </summary>
+        /// <param name="data">The opcode.</param>
+        /// <exception cref="IllegalOpcodeException">Thrown when an illegal opcode is found.</exception>
         private void Misc(Opcode data)
         {
             try
@@ -301,40 +405,68 @@ namespace Chip8
         #endregion
 
         #region Arithmetic Opcodes
-
+        /// <summary>
+        /// Performs the operation r[X] = r[Y].
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining registers X and Y.</param>
         private void MoveRegisters(Opcode data)
         {
             state.V[data.X] = state.V[data.Y];
         }
+        /// <summary>
+        /// Performs the operation r[X] |= r[Y].
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining registers X and Y.</param>
         private void OrRegisters(Opcode data)
         {
             state.V[data.X] |= state.V[data.Y];
             if(InterpreterMode == Chip8InterpreterMode.CosmacVIP)
                 state.V[0xF] = 0;
         }
+        /// <summary>
+        /// Performs the operation r[X] &= r[Y].
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining registers X and Y.</param>
         private void AndRegisters(Opcode data)
         {
             state.V[data.X] &= state.V[data.Y];
             if(InterpreterMode == Chip8InterpreterMode.CosmacVIP)
                 state.V[0xF] = 0;
         }
+        /// <summary>
+        /// Performs the operation r[X] ^= r[Y].
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining registers X and Y.</param>
         private void XorRegisters(Opcode data)
         {
             state.V[data.X] ^= state.V[data.Y];
             if(InterpreterMode == Chip8InterpreterMode.CosmacVIP)
                 state.V[0xF] = 0;
         }
+        /// <summary>
+        /// Performs the operation r[X] += r[Y]. Register F is set to the carry bit (1 for yes, 0 for no).
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining registers X and Y.</param>
         private void AddRegisters(Opcode data)
         {
             ushort temp = (ushort)(state.V[data.X] + state.V[data.Y]);
             state.V[0xF] = (byte)((temp > 255) ? 1 : 0);
             state.V[data.X] = (byte)((byte)temp & 0xFF);
         }
+        /// <summary>
+        /// Performs the operation r[X] -= r[Y]. Register F is set to the borrow bit (1 for no, 0 for yes).
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining registers X and Y.</param>
         private void SubtractRegisters(Opcode data)
         {
             state.V[0xF] = (byte)((state.V[data.X] < state.V[data.Y]) ? 0 : 1);
             state.V[data.X] = (byte)(state.V[data.X] - state.V[data.Y]);
         }
+        /// <summary>
+        /// Performs a right shift on the specified register and stores the result in register X. Register F stores the shifted bit.
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining registers X and Y.</param>
+        /// <remarks> In SCHIP mode, the shift is performed in place on register X. Otherwise, the shift is performed on register Y and stored in register X. </remarks>
         private void ShiftRegistersRight(Opcode data)
         {
             if(InterpreterMode == Chip8InterpreterMode.Schip)
@@ -343,11 +475,20 @@ namespace Chip8
             state.V[data.X] = (byte)(state.V[data.Y] >> 1);
             state.V[0xF] = (byte)(((state.V[data.Y] & 0x1) != 0) ? 1 : 0);
         }
+        /// <summary>
+        /// Performs the operation r[X] = r[Y] - r[X]. Register F is set to the borrow bit (1 for no, 0 for yes).
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining registers X and Y.</param>
         private void SubtractRegistersAlt(Opcode data)
         {
             state.V[0xF] = (byte)((state.V[data.X] > state.V[data.Y]) ? 0 : 1);
             state.V[data.X] = (byte)(state.V[data.Y] - state.V[data.X]);
         }
+        /// <summary>
+        /// Performs a left shift on the specified register and stores the result in register X. Register F stores the shifted bit.
+        /// </summary>
+        /// <param name="data">The opcode. Used for determining registers X and Y.</param>
+        /// <remarks> In SCHIP mode, the shift is performed in place on register X. Otherwise, the shift is performed on register Y and stored in register X. </remarks>
         private void ShiftRegistersLeft(Opcode data)
         {
             if(InterpreterMode == Chip8InterpreterMode.Schip)
@@ -360,11 +501,18 @@ namespace Chip8
         #endregion
 
         #region Misc Opcodes
+        /// <summary>
+        /// Loads the delay timer into the specified register.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the loading register.</param>
         private void LoadDelay(Opcode data)
         {
             state.V[data.X] = state.Delay;
         }
-
+        /// <summary>
+        /// Waits for any key to be pressed. On completion, stores the resulting key in the specified register.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the loading register.</param>
         private void WaitForKeypress(Opcode data)
         {
             state.PC -= 2;
@@ -378,39 +526,63 @@ namespace Chip8
                 }
             }
         }
-
+        /// <summary>
+        /// Sets the delay timer to the value in the specified register.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
         private void SetDelay(Opcode data)
         {
             state.Delay = state.V[data.X];
         }
-
+        /// <summary>
+        /// Sets the sound timer to the value in the specified register.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
         private void SetSound(Opcode data)
         {
             state.Sound = state.V[data.X];
         }
-
+        /// <summary>
+        /// Adds the value of the specified register to the index register.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
         private void AddRegisterToIndex(Opcode data)
         {
             state.I += state.V[data.X];
         }
-
+        /// <summary>
+        /// Sets the index register to the font character specified by the specified register.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
+        /// <remarks>This only handles lores fonts.
         private void LoadIndexFont(Opcode data)
         {
             state.I = (ushort)(5 * state.V[data.X]);
         }
-
+        /// <summary>
+        /// Sets the index register to the SCHIP font character specified by the specified register.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
+        /// <remarks>This only handles hires fonts.</remarks>
         private void LoadIndexFontSuper(Opcode data)
         {
             // Not implemented
         }
-
+        /// <summary>
+        /// Stores the binary-coded decimal representation of the value in the specified register to the current address of the index register.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
         private void StoreBCD(Opcode data)
         {
             state.Memory[state.I] = (byte)(state.V[data.X] / 100 % 10);
             state.Memory[state.I + 1] = (byte)(state.V[data.X] / 10 % 10);
             state.Memory[state.I + 2] = (byte)(state.V[data.X]% 10);
         }
-
+        /// <summary>
+        /// Stores registers 0 to X (specified) at the current address of I.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
+        /// <remarks> In Cosmac VIP and Octo (XO-CHIP) modes, the index register is modified. SCHIP mode leaves the index register as is. </remarks>
         private void StoreRegisters(Opcode data)
         {
             for (var i = 0; i <= data.X; i++)
@@ -422,6 +594,11 @@ namespace Chip8
                 state.I += (ushort)(data.X + 1);
             }
         }
+        /// <summary>
+        /// Loads registers 0 to X (specified) from the current address of I.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
+        /// <remarks> In Cosmac VIP and Octo (XO-CHIP) modes, the index register is modified. SCHIP mode leaves the index register as is. </remarks>
         private void LoadRegisters(Opcode data)
         {
             for (var i = 0; i <= data.X; i++)
