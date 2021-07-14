@@ -13,6 +13,7 @@ namespace Chip8
         [Header("Display")] [SerializeField] private Color backgroundColor = Color.black;
         [SerializeField] private Color foregroundColor = Color.white;
         [SerializeField] private RawImage display;
+        private Texture2D displayTexture;
         [Header("Audio")] private AudioSource _source;
         [SerializeField] private float audioFrequency = 440f;
         [SerializeField] private float audioSampleRate = 44100;
@@ -21,12 +22,23 @@ namespace Chip8
         
         private ulong _stepCount;
         public string disassemblyContents;
-        private byte[] _romData;
+        // The default rom that is loaded is defined here. It's basically telling the player that there is an error with their game.
+        private byte[] _romData = { 0x12, 0x1E, 0x24, 0x24, 0x00, 0x3C, 0x42, 0x92, 
+                                    0xD5, 0xB5, 0xB5, 0x92, 0x62, 0x85, 0xB5, 0x97, 
+                                    0x65, 0x97, 0xF4, 0xF7, 0x94, 0x97, 0xFE, 0xFF, 
+                                    0xE7, 0xE7, 0xFF, 0x81, 0xBD, 0xBD, 0xA2, 0x02, 
+                                    0x60, 0x0C, 0x61, 0x0D, 0xD0, 0x15, 0xA2, 0x07, 
+                                    0x60, 0x18, 0xD0, 0x15, 0xA2, 0x0C, 0x60, 0x24, 
+                                    0xD0, 0x15, 0xA2, 0x11, 0x60, 0x2D, 0xD0, 0x15, 
+                                    0xA2, 0x16, 0x60, 0x1C, 0x61, 0x16, 0x66, 0x2D, 
+                                    0xF6, 0x15, 0xF2, 0x07, 0x32, 0x00, 0x12, 0x4C, 
+                                    0xD0, 0x18, 0x12, 0x40, 0x12, 0x42};
 
         #region Functionality
 
         private void Start()
         {
+            displayTexture = new Texture2D(64, 32);
             // Setup AudioSource
             _source = gameObject.AddComponent<AudioSource>();
             _source.playOnAwake = false;
@@ -37,35 +49,20 @@ namespace Chip8
             _emulator = new Chip8();
             if (rom == null)
             {
-                Debug.LogError("Error: Could not find rom. Whoops!");
-                Destroy(this);
-                return;
+                Debug.LogWarning($"Could not find the rom at {romPath}. Loading default rom...");
+                // Destroy(this);
+                // return;
+            }
+            else
+            {
+                _romData = rom.bytes;
             }
 
-            _romData = rom.bytes;
+            
             // DisassembleROM();
 
             _emulator.PowerAndLoadRom(_romData, interpreterMode);
         }
-
-        /*private void DisassembleROM()
-        {
-            int romMemoryLocation = 0x200;
-            for (int i = 0; i < romData.Length; i += 2)
-            {
-                disassemblyContents += (romMemoryLocation + i).ToString("X4") + ": ";
-                if(i + 1 < romData.Length)
-                    disassemblyContents += romData[i].ToString("X2") + " " + romData[i + 1].ToString("X2");
-                else
-                {
-                    disassemblyContents += romData[i].ToString("X2");
-                }
-    
-                disassemblyContents += "\n";
-    
-            }
-            disassembly.text = disassemblyContents;
-        }*/
 
         void Update()
         {
@@ -76,7 +73,7 @@ namespace Chip8
         void FixedUpdate()
         {
             _emulator.DecrementTimers();
-            if (_emulator.Sound > 0)
+            if (_emulator.state.Sound > 0)
             {
                 if (!_source.isPlaying)
                 {
@@ -94,10 +91,11 @@ namespace Chip8
         {
             if (_emulator.Powered)
             {
-                _emulator.Update();
+                _emulator.Cycle();
                 _stepCount++;
                 if (_emulator.Draw)
-                    display.texture = RenderChipFrame(_emulator.Display, backgroundColor, foregroundColor);
+                    RenderChipFrame(ref displayTexture, _emulator.state.Display, backgroundColor, foregroundColor);
+                display.texture = displayTexture;
                 // RenderFrame(emulator.Display);
             }
         }
@@ -106,22 +104,21 @@ namespace Chip8
         {
             for (int i = 0; i < data.Length; i += channels)
             {
-                data[i] = GenerateSine(_timeIndex, audioFrequency, audioSampleRate);
+                data[i] = GenerateSquare(_timeIndex, audioFrequency, audioSampleRate);
                 if(channels == 2)
-                    data[i+1] = GenerateSine(_timeIndex, audioFrequency, audioSampleRate);
+                    data[i+1] = GenerateSquare(_timeIndex, audioFrequency, audioSampleRate);
 
                 _timeIndex++;
 
-                if (_timeIndex >= audioSampleRate * audioWavelength * _emulator.Sound)
+                if (_timeIndex >= audioSampleRate * audioWavelength * _emulator.state.Sound)
                 {
                     _timeIndex = 0;
                 }
             }
         }
 
-        public static Texture2D RenderChipFrame(byte[,] data, Color bg, Color fg)
+        public static void RenderChipFrame(ref Texture2D result, byte[,] data, Color bg, Color fg)
         {
-            Texture2D result = new Texture2D(64, 32);
             result.filterMode = FilterMode.Point;
             for (int y = 0; y < result.height; y++)
             {
@@ -133,12 +130,16 @@ namespace Chip8
             }
 
             result.Apply(false);
-            return result;
         }
 
         public static float GenerateSine(int time, float frequency, float sampleRate = 44100f)
         {
             return Mathf.Sin(2 * Mathf.PI * time * frequency / sampleRate);
+        }
+
+        public static float GenerateSquare(int time, float frequency, float sampleRate = 44100f)
+        {
+            return Mathf.Sign(GenerateSine(time, frequency, sampleRate));
         }
 
         #endregion
@@ -150,130 +151,130 @@ namespace Chip8
 
             if (context.started)
             {
-                _emulator.Input[0] = true;
+                _emulator.state.Input[0] = true;
             }
             else if (context.canceled)
-                _emulator.Input[0] = false;
+                _emulator.state.Input[0] = false;
         }
 
         public void Input1(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[1] = true;
+                _emulator.state.Input[1] = true;
             else if (context.canceled)
-                _emulator.Input[1] = false;
+                _emulator.state.Input[1] = false;
         }
 
         public void Input2(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[2] = true;
+                _emulator.state.Input[2] = true;
             else if (context.canceled)
-                _emulator.Input[2] = false;
+                _emulator.state.Input[2] = false;
         }
 
         public void Input3(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[3] = true;
+                _emulator.state.Input[3] = true;
             else if (context.canceled)
-                _emulator.Input[3] = false;
+                _emulator.state.Input[3] = false;
         }
 
         public void Input4(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[4] = true;
+                _emulator.state.Input[4] = true;
             else if (context.canceled)
-                _emulator.Input[4] = false;
+                _emulator.state.Input[4] = false;
         }
 
         public void Input5(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[5] = true;
+                _emulator.state.Input[5] = true;
             else if (context.canceled)
-                _emulator.Input[5] = false;
+                _emulator.state.Input[5] = false;
         }
 
         public void Input6(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[6] = true;
+                _emulator.state.Input[6] = true;
             else if (context.canceled)
-                _emulator.Input[6] = false;
+                _emulator.state.Input[6] = false;
         }
 
         public void Input7(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[7] = true;
+                _emulator.state.Input[7] = true;
             else if (context.canceled)
-                _emulator.Input[7] = false;
+                _emulator.state.Input[7] = false;
         }
 
         public void Input8(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[8] = true;
+                _emulator.state.Input[8] = true;
             else if (context.canceled)
-                _emulator.Input[8] = false;
+                _emulator.state.Input[8] = false;
         }
 
         public void Input9(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[9] = true;
+                _emulator.state.Input[9] = true;
             else if (context.canceled)
-                _emulator.Input[9] = false;
+                _emulator.state.Input[9] = false;
         }
 
         public void InputA(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[0xA] = true;
+                _emulator.state.Input[0xA] = true;
             else if (context.canceled)
-                _emulator.Input[0xA] = false;
+                _emulator.state.Input[0xA] = false;
         }
 
         public void InputB(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[0xB] = true;
+                _emulator.state.Input[0xB] = true;
             else if (context.canceled)
-                _emulator.Input[0xB] = false;
+                _emulator.state.Input[0xB] = false;
         }
 
         public void InputC(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[0xC] = true;
+                _emulator.state.Input[0xC] = true;
             else if (context.canceled)
-                _emulator.Input[0xC] = false;
+                _emulator.state.Input[0xC] = false;
         }
 
         public void InputD(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[0xD] = true;
+                _emulator.state.Input[0xD] = true;
             else if (context.canceled)
-                _emulator.Input[0xD] = false;
+                _emulator.state.Input[0xD] = false;
         }
 
         public void InputE(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[0xE] = true;
+                _emulator.state.Input[0xE] = true;
             else if (context.canceled)
-                _emulator.Input[0xE] = false;
+                _emulator.state.Input[0xE] = false;
         }
 
         public void InputF(InputAction.CallbackContext context)
         {
             if (context.started)
-                _emulator.Input[0xF] = true;
+                _emulator.state.Input[0xF] = true;
             else if (context.canceled)
-                _emulator.Input[0xF] = false;
+                _emulator.state.Input[0xF] = false;
         }
 
         public void InputStep(InputAction.CallbackContext context)

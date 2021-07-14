@@ -1,13 +1,17 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace Chip8
 {
-
     public class Chip8
     {
-        // The memory of the Chip-8 system
-        private byte[] memory = new byte[0x1000];
-
+        #region Opcodes
+        private readonly Dictionary<byte, Action<Opcode>> opcodes;
+        private readonly Dictionary<byte, Action<Opcode>> opcodesMisc;
+        private readonly Dictionary<byte, Action<Opcode>> opcodesArithmetic;
+        #endregion
+        // Holds the current state of the emulator. Useful for save states!
+        public EmulationState state;
         // The default fontset used by the Chip-8.
         private static readonly byte[] FontSet =
         {
@@ -28,41 +32,69 @@ namespace Chip8
             0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
             0xF0, 0x80, 0xF0, 0x80, 0x80 //F
         };
-
-        // Registers and timers.
-        public byte[] V = new byte[0x10];
-        public byte Delay;
-        public byte Sound;
-        public ushort I;
-        public ushort PC;
-        public byte StackPointer;
-        public ushort[] Stack = new ushort[0x10];
-        public byte[,] Display = new byte[64, 32];
-        public bool[] Input = new bool[0x10];
+        
 
         // Determines whether the machine is powered or not.
         public bool Powered;
 
-        // Settings for our Chip8 emulation, allowing for different programs written for different interpreters.
-        // Wrapping mode of the CHIP-8. Most implementations wrap sprite display, but some don't. By default this is set to the wrapping mode.
-        public Chip8WrappingMode WrappingMode = Chip8WrappingMode.Wrap;
-
         // The interpreter mode. There are differences between the SCHIP mode and the COSMAC mode. All information regarding
         // these two different modes can be found here: https://github.com/mattmikolay/chip-8/wiki/CHIP%E2%80%908-Instruction-Set
-        public Chip8InterpreterMode InterpreterMode = Chip8InterpreterMode.Schip;
-
-        // The current opcode.
-        private ushort _opcode;
-
-        // This is a value used to increment the PC correctly.
-        private ushort _next;
+        public Chip8InterpreterMode InterpreterMode;
 
         // Determines whether the screen should be redrawn or not. Usually only 00E0 and DXYN opcodes should set this to true.
         public bool Draw { get; private set; }
 
-        public void Update()
+        public Chip8(Chip8InterpreterMode interpreterMode = Chip8InterpreterMode.Schip)
         {
-            Cycle();
+            InterpreterMode = interpreterMode;
+            opcodes = new Dictionary<byte, Action<Opcode>>
+            {
+                { 0x0, InterpreterSystemCommands },
+                { 0x1, Jump },
+                { 0x2, CallSubroutine },
+                { 0x3, SkipIfRegisterEqualsImmediate },
+                { 0x4, SkipIfRegisterNotEqualsImmediate },
+                { 0x5, SkipIfRegisterEqualsRegister },
+                { 0x6, LoadImmediate },
+                { 0x7, AddImmediate },
+                { 0x8, Arithmetic },
+                { 0x9, SkipIfRegisterNotEqualsRegister },
+                { 0xA, LoadIndexImmediate },
+                { 0xB, JumpOffset },
+                { 0xC, LoadRandom },
+                { 0xD, DrawSprite },
+                { 0xE, SkipInput },
+                { 0xF, Misc },
+            };
+
+            opcodesArithmetic = new Dictionary<byte, Action<Opcode>>
+            {
+                { 0x0, MoveRegisters },
+                { 0x1, OrRegisters },
+                { 0x2, AndRegisters },
+                { 0x3, XorRegisters },
+                { 0x4, AddRegisters },
+                { 0x5, SubtractRegisters },
+                { 0x6, ShiftRegistersRight },
+                { 0x7, SubtractRegistersAlt },
+                { 0xE, ShiftRegistersLeft }
+            };
+
+            opcodesMisc = new Dictionary<byte, Action<Opcode>>
+            {
+                { 0x07, LoadDelay },
+                { 0x0A, WaitForKeypress },
+                { 0x15, SetDelay },
+                { 0x18, SetSound },
+                { 0x1E, AddRegisterToIndex },
+                { 0x29, LoadIndexFont },
+                { 0x30, LoadIndexFontSuper },
+                { 0x33, StoreBCD },
+                { 0x55, StoreRegisters },
+                { 0x65, LoadRegisters }
+            };
+
+            state = new EmulationState(interpreterMode);
         }
 
         /// <summary>
@@ -75,7 +107,7 @@ namespace Chip8
             InterpreterMode = interpreterMode;
             Power();
             // Load ROM into memory
-            for (var i = 0; i < romData.Length; i++) memory[0x200 + i] = romData[i];
+            for (var i = 0; i < romData.Length; i++) state.Memory[0x200 + i] = romData[i];
             Powered = true;
         }
 
@@ -85,468 +117,343 @@ namespace Chip8
         private void Power()
         {
             // Reset pc, opcode reading, I, and sp
-            PC = 0x200;
-            _opcode = I = StackPointer = 0;
+            state.PC = 0x200;
+            state.I = state.SP = 0;
 
             // Clear memory, display, stack, and registers
             for (var i = 0; i < 0x1000; i++)
             {
-                memory[i] = 0;
+                state.Memory[i] = 0;
                 if (i < 0x10)
                 {
-                    Stack[i] = 0;
-                    V[i] = 0;
-                    Input[i] = false;
+                    state.Stack[i] = 0;
+                    state.V[i] = 0;
+                    state.Input[i] = false;
                 }
             }
 
             // Clear display
             for (var y = 0; y < 32; y++)
-            for (var x = 0; x < 64; x++)
-                Display[x, y] = 0;
-
-            for (var i = 0; i < 80; i++) memory[i] = FontSet[i];
+                for (var x = 0; x < 64; x++)
+                    state.Display[x, y] = 0;
+            WriteFontset();
 
             // Reset timers
-            Delay = Sound = 0;
+            state.Delay = state.Sound = 0;
         }
 
-        /// <summary>
-        ///     The heart of the Chip-8 interpreter. Emulates a cycle of the interpreter, and executes an opcode.
-        /// </summary>
-        /// <exception cref="IllegalOpcodeException">Thrown upon encountering an unexpected or unsupported opcode.</exception>
-        private void Cycle()
+        private void WriteFontset()
         {
-            _next = 2;
-            // Reset draw flag to false
-            Draw = false;
-            _opcode = (ushort) ((memory[PC] << 8) | memory[PC + 1]); // Turns two bytes into a single short
-            // Determine the opcode to run
-            switch (_opcode & 0xF000)
-            {
-                case 0x0000:
-                    switch (_opcode & 0x0FFF)
-                    {
-                        case 0xE0:
-                            // 0x00E0 - clears screen
-                            ClearScreen();
-                            break;
-                        case 0xEE:
-                            // 0x00EE - return from subroutine
-                            ReturnFromSubroutine();
-                            break;
-                        default:
-                            //0x0NNN - jump to machine code instruction
-                            JumpToAddress(_opcode);
-                            break;
-                    }
-
-                    break;
-                case 0x1000:
-                    // Jump to address
-                    JumpToAddress(_opcode);
-                    break;
-                case 0x2000:
-                    // Call subroutine
-                    CallSubroutine(_opcode);
-                    break;
-                case 0x3000:
-                    // Skip next instruction if equal
-                    // SkipInstruction((_opcode & 0xF00) >> 8, (byte) _opcode, true);
-                    SkipInstructionIfEquals(V[(_opcode & 0xF00) >> 8], (byte) _opcode);
-                    break;
-                case 0x4000:
-                    // Skip next instruction if equal
-                    SkipInstructionIfNotEquals(V[(_opcode & 0xF00) >> 8], (byte) _opcode);
-                    break;
-                case 0x5000:
-                    SkipInstructionIfEquals(V[(_opcode & 0xF00) >> 8], V[(_opcode & 0xF0) >> 4]);
-                    break;
-                case 0x6000:
-                    SetRegister((_opcode & 0xF00) >> 8, (byte) _opcode);
-                    break;
-                case 0x7000:
-                    AddRegister((_opcode & 0xF00) >> 8, (byte) _opcode);
-                    break;
-                case 0x8000:
-                    switch (_opcode & 0xF)
-                    {
-                        case 0x0:
-                            V[(_opcode & 0xF00) >> 8] = V[(_opcode & 0xF0) >> 4];
-                            break;
-                        case 0x1:
-                            V[(_opcode & 0xF00) >> 8] |= V[(_opcode & 0xF0) >> 4];
-                            if (InterpreterMode == Chip8InterpreterMode.Schip) V[0xF] = 0;
-                            break;
-                        case 0x2:
-                            V[(_opcode & 0xF00) >> 8] &= V[(_opcode & 0xF0) >> 4];
-                            if (InterpreterMode == Chip8InterpreterMode.Schip) V[0xF] = 0;
-                            break;
-                        case 0x3:
-                            V[(_opcode & 0xF00) >> 8] ^= V[(_opcode & 0xF0) >> 4];
-                            if (InterpreterMode == Chip8InterpreterMode.Schip) V[0xF] = 0;
-                            break;
-                        case 0x4:
-                            AddRegisters((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4);
-                            break;
-                        case 0x5:
-                            SubRegisters((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4);
-                            break;
-                        case 0x6:
-                            if (InterpreterMode == Chip8InterpreterMode.Schip)
-                                ShiftRegisters((_opcode & 0xF00) >> 8, true);
-                            else if (InterpreterMode == Chip8InterpreterMode.Cosmac)
-                                ShiftRegistersAlt((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4, true);
-                            break;
-                        case 0x7:
-                            SubRegisters((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4, true);
-                            break;
-                        case 0xE:
-                            if (InterpreterMode == Chip8InterpreterMode.Schip)
-                                ShiftRegisters((_opcode & 0xF00) >> 8);
-                            else if (InterpreterMode == Chip8InterpreterMode.Cosmac)
-                                ShiftRegistersAlt((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4);
-                            break;
-                        default:
-                            // Error!
-                            throw new IllegalOpcodeException("Illegal opcode called in emulation!", _opcode);
-                    }
-
-                    break;
-                case 0x9000:
-                    SkipInstructionIfNotEquals(V[(_opcode & 0xF00) >> 8], V[(_opcode & 0xF0) >> 4]);
-                    break;
-                case 0xA000:
-                    I = (ushort) (_opcode & 0xFFF);
-                    break;
-                case 0xB000:
-                    JumpToAddress((ushort) ((_opcode & 0xFFF) + V[0]));
-                    break;
-                case 0xC000:
-                    SetRegister((_opcode & 0xF00) >> 8, (byte) (_opcode & 0xFF), true);
-                    break;
-                case 0xD000:
-                    DisplaySprite((_opcode & 0xF00) >> 8, (_opcode & 0xF0) >> 4, _opcode & 0xF);
-                    break;
-                case 0xE000:
-                    switch (_opcode & 0xFF)
-                    {
-                        case 0x9E:
-                            if (Input[V[(_opcode & 0xF00) >> 8]])
-                                _next = 4;
-                            break;
-                        case 0xA1:
-                            if (!Input[V[(_opcode & 0xF00) >> 8]])
-                                _next = 4;
-                            break;
-                        default:
-                            // Illegal opcode exception
-                            throw new IllegalOpcodeException("Illegal opcode called in emulation!", _opcode);
-                    }
-
-                    break;
-                case 0xF000:
-                    var register = (_opcode & 0xF00) >> 8;
-                    switch (_opcode & 0xFF)
-                    {
-                        case 0x07:
-                            // Set Vx to timer
-                            SetRegister(register, Delay);
-                            break;
-                        case 0x0A:
-                            // Wait for key press, store the value of the key in Vx
-                            _next = 0;
-                            for (int i = 0; i < 0x10; i++)
-                            {
-                                if (Input[i])
-                                {
-                                    _next = 2;
-                                }
-                            }
-
-                            break;
-                        case 0x15:
-                            // Set delay timer to Vx
-                            Delay = V[register];
-                            break;
-                        case 0x18:
-                            // Set sound timer to Vx
-                            Sound = V[register];
-                            break;
-                        case 0x1E:
-                            // Add I and Vx, store in I
-                            if (I + V[register] > 0xFFF)
-                                V[0xF] = 1;
-                            else
-                                V[0xF] = 0;
-                            I += V[register];
-                            break;
-                        case 0x29:
-                            // Set I to location of hex sprite for fontset
-                            I = (ushort) (5 * V[register]);
-                            break;
-                        case 0x33:
-                            // Store BCD of Vx at mem[i], mem[i+1], and mem[i+2]
-                            memory[I] = (byte) (V[register] / 100);
-                            memory[I + 1] = (byte) (V[register] / 10 % 10);
-                            memory[I + 2] = (byte) (V[register] % 10);
-                            break;
-                        case 0x55:
-                            // Store registers V0 - Vx in memory starting at I
-                            for (var i = 0; i <= register; i++) memory[I + i] = V[i];
-                            // Interpreter behavior
-                            if (InterpreterMode == Chip8InterpreterMode.Cosmac)
-                                I += (ushort) (register + 1);
-
-                            break;
-                        case 0x65:
-                            // Read registers V0 - Vx from memory starting at I
-                            for (var i = 0; i <= register; i++) V[i] = memory[I + i];
-
-                            // Interpreter behavior
-                            if (InterpreterMode == Chip8InterpreterMode.Cosmac)
-                                I += (ushort) (register + 1);
-
-                            break;
-                    }
-
-                    break;
-                default:
-                    throw new IllegalOpcodeException("Illegal opcode called in emulation!", _opcode);
-            }
-
-            PC += _next;
-            // Delay
-            
+            for (var i = 0; i < 80; i++) state.Memory[i] = FontSet[i];
         }
 
-        /// <summary>
-        ///     Decrements the timers. This should be done at 60 Hz.
-        /// </summary>
+        public void Cycle()
+        {
+            Draw = false;
+            Opcode op = Fetch();
+            state.PC += 2; // automatically increments the PC
+            opcodes[(byte)(op.opcode >> 12)](op);
+        }
+
+        private Opcode Fetch()
+        {
+            return new Opcode((ushort)((state.Memory[state.PC] << 8) | state.Memory[state.PC + 1]));
+        }
+
         public void DecrementTimers()
         {
-            if (Delay > 0) Delay--;
-            if (Sound > 0) Sound--;
+            if(state.Sound > 0) state.Sound--;
+            if(state.Delay > 0) state.Delay--;
         }
-        
-
-        // The part where we implement the opcodes
-
-        #region Opcode Implementation
-
-        /// <summary>
-        ///     Zeroes out the display.
-        /// </summary>
-        private void ClearScreen()
+        #region Standard Opcodes
+        private void InterpreterSystemCommands(Opcode data)
         {
-            // Clear display
-            for (var y = 0; y < 32; y++)
-            for (var x = 0; x < 64; x++)
-                Display[x, y] = 0;
-
-            Draw = true;
-        }
-
-        /// <summary>
-        ///     Returns from a previously called subroutine. Accesses the stack to set the program counter to the last value, then
-        ///     resumes running the program.
-        /// </summary>
-        private void ReturnFromSubroutine()
-        {
-            PC = Stack[StackPointer--];
-        }
-
-        /// <summary>
-        ///     Sets the program counter to the specified address.
-        /// </summary>
-        /// <param name="address">The memory address to jump to.</param>
-        private void JumpToAddress(ushort address)
-        {
-            // Make sure that we only set the part of the opcode that is the address, and nothing else.
-            PC = (ushort) (address & 0xFFF);
-            _next = 0;
-        }
-
-        /// <summary>
-        ///     Calls a subroutine. This adds the program counter to the stack and sets it to the address provided.
-        /// </summary>
-        /// <param name="address">The memory address where the subroutine is located.</param>
-        private void CallSubroutine(ushort address)
-        {
-            Stack[++StackPointer] = PC;
-            PC = (ushort) (address & 0xFFF);
-            _next = 0;
-        }
-
-        /// <summary>
-        /// Skips the next instruction if the two values are equal. Note that both values are literals - thus, one must take care to retrive the values of specific registers before calling this function.
-        /// </summary>
-        /// <param name="val1">The first value.</param>
-        /// <param name="val2">The second value.</param>
-        private void SkipInstructionIfEquals(byte val1, byte val2)
-        {
-            _next = (val1 == val2) ? (ushort) 4 : (ushort) 2;
-        }
-
-        private void SkipInstructionIfNotEquals(byte val1, byte val2)
-        {
-            _next = (val1 != val2) ? (ushort) 4 : (ushort) 2;
-        }
-
-        /// <summary>
-        ///     Sets the specified register to a value.
-        /// </summary>
-        /// <param name="register">The register to be set.</param>
-        /// <param name="value">The value to set.</param>
-        /// <param name="random">
-        ///     If true, modifies the behavior of this function to act like opcode CXNN. The register is set to a
-        ///     random value and is masked with the value given.
-        /// </param>
-        private void SetRegister(int register, byte value, bool random = false)
-        {
-            if (random)
+            switch(data.NN)
             {
-                var rand = new Random();
-                var bytes = new byte[1];
-                rand.NextBytes(bytes);
-                V[register] = (byte) (value & bytes[0]);
-                return;
-            }
-
-            V[register] = value;
-        }
-
-        /// <summary>
-        ///     Adds a value to the register.
-        /// </summary>
-        /// <param name="register">The register to be set.</param>
-        /// <param name="value">The value to add.</param>
-        private void AddRegister(int register, byte value)
-        {
-            V[register] += value;
-        }
-
-        /// <summary>
-        ///     Adds the values of two registers, and stores the value in Vx. VF is set if a carry occurs, and is unset otherwise.
-        /// </summary>
-        /// <param name="x">The first register. This register will be set.</param>
-        /// <param name="y">The second register.</param>
-        private void AddRegisters(int x, int y)
-        {
-            V[x] = (byte) (V[x] + V[y]);
-            V[0xF] = (V[y] > 0xFF - V[x]) ? (byte) 1 : (byte) 0;
-        }
-
-        /// <summary>
-        ///     Subtracts the value of Vy from Vx. VF is set if a borrow occurs, and unset otherwise.
-        /// </summary>
-        /// <param name="x">The first register. Contains the value that is being subtracted from and is being set.</param>
-        /// <param name="y">The second register. Contains the value that will be subtracted from the first register's value.</param>
-        /// <param name="useModifiedBehavior">
-        ///     If set to true, modifies the behavior to behave as opcode 8XY7. Vx is set to the
-        ///     value of Vy - Vx.
-        /// </param>
-        private void SubRegisters(int x, int y, bool useModifiedBehavior = false)
-        {
-            var doesBorrow = useModifiedBehavior ? V[x] > V[y] : V[x] < V[y];
-            V[0xF] = !doesBorrow ? (byte)1 : (byte)0;
-
-            V[x] = useModifiedBehavior ? (byte) (V[y] - V[x]) : (byte) (V[x] - V[y]);
-        }
-
-        /// <summary>
-        ///     Shifts the specified register right. Stores the value of the shifted register in the register, and the least
-        ///     significant bit prior is stored in register F.
-        ///     This is the SCHIP implementation of this function.
-        /// </summary>
-        /// <param name="register">The register to shift</param>
-        /// <param name="useModifiedBehavior">
-        ///     Modifies the behavior. If set to true, shifts the specified register left and stores
-        ///     the most significant bit prior to the shift in register F.
-        /// </param>
-        private void ShiftRegisters(int register, bool useModifiedBehavior = false)
-        {
-            if (!useModifiedBehavior)
-            {
-                V[0xF] = (byte) ((V[register] & 0x80) >> 7);
-                V[register] = (byte) (V[register] << 1);
-            }
-            else
-            {
-                V[0xF] = (byte) (V[register] & 0x1);
-                V[register] = (byte) (V[register] >> 1);
+                case 0xE0:
+                    for (var x = 0; x < 64; x++)
+                        for (var y = 0; y < 32; y++)
+                            state.Display[x, y] = 0;
+                    Draw = true;
+                    break;
+                case 0xEE:
+                    state.PC = state.Stack[state.SP--];
+                    break;
+                default:
+                    // Just keep the program where it is at
+                    state.PC -= 2;
+                    break;
             }
         }
 
-        /// <summary>
-        ///     Shifts the specified register (y) right. Stores the value of the shifted register in register x, and the least
-        ///     significant bit prior is stored in register F.
-        ///     This is the original (COSMAC) implementation of this function.
-        /// </summary>
-        /// <param name="x">The register that will be set.</param>
-        /// <param name="y">The register to be shifted.</param>
-        /// <param name="useModifiedBehavior">
-        ///     Modifies the behavior. If set to true, shifts the specified register left and stores
-        ///     the most significant bit prior to the shift in register F.
-        /// </param>
-        private void ShiftRegistersAlt(int x, int y, bool useModifiedBehavior = false)
+        private void Jump(Opcode data)
         {
-            if (useModifiedBehavior)
-            {
-                V[0xF] = (byte) ((V[y] & 0x80) >> 7);
-                V[x] = (byte) (V[y] << 1);
-            }
-            else
-            {
-                V[0xF] = (byte) (V[y] & 0x1);
-                V[x] = (byte) (V[y] >> 1);
-            }
+            state.PC = data.NNN;
         }
 
-        /// <summary>
-        ///     Displays a sprite with coordinates Vx and Vy with N bytes of data located at the address stored in I. VF is set if
-        ///     any set pixels are unset, and unset otherwise.
-        /// </summary>
-        /// <param name="x">The register containing the x coordinate.</param>
-        /// <param name="y">The register containing the y coordinate.</param>
-        /// <param name="n">
-        ///     The number of bytes to read for the sprite. Each byte corresponds to an 8-pixel row of sprites, and
-        ///     each row is drawn top to bottom.
-        /// </param>
-        private void DisplaySprite(int x, int y, int n)
+        private void CallSubroutine(Opcode data)
         {
-            V[0xF] = 0;
-            x = V[x];
-            y = V[y];
+            state.Stack[++state.SP] = state.PC;
+            state.PC = data.NNN;
+        }
 
-            for (var rY = 0; rY < n; rY++)
+        private void SkipIfRegisterEqualsImmediate(Opcode data)
+        {
+            if(state.V[data.X] == data.NN)
+                state.PC += 2;
+        }
+        private void SkipIfRegisterNotEqualsImmediate(Opcode data)
+        {
+            if(state.V[data.X] != data.NN)
+                state.PC += 2;
+        }
+        private void SkipIfRegisterEqualsRegister(Opcode data)
+        {
+            if(state.V[data.X] == state.V[data.Y])
+                state.PC += 2;
+        }
+        private void LoadImmediate(Opcode data)
+        {
+            state.V[data.X] = data.NN;
+        }
+        private void AddImmediate(Opcode data)
+        {
+            state.V[data.X] += data.NN;
+        }
+        private void SkipIfRegisterNotEqualsRegister(Opcode data)
+        {
+            if(state.V[data.X] != state.V[data.Y])
+                state.PC += 2;
+        }
+        private void LoadIndexImmediate(Opcode data)
+        {
+            state.I = data.NNN;
+        }
+        private void JumpOffset(Opcode data)
+        {
+            state.PC = (ushort)((InterpreterMode == Chip8InterpreterMode.Schip) ? data.NNN + state.V[(data.NNN >> 8) & 0xF] : data.NNN + state.V[0]);
+        }
+        private void LoadRandom(Opcode data)
+        {
+            state.V[data.X] = (byte)(UnityEngine.Random.Range(0, 255) & data.NN);
+        }
+        private void DrawSprite(Opcode data)
+        {
+            // Oh boy.
+            state.V[0xF] = 0;
+
+            var posX = state.V[data.X];
+            var posY = state.V[data.Y];
+
+            for (var y = 0; y < data.N; y++)
             {
-                ushort pixel = memory[I + rY];
-                for (var rX = 0; rX < 8; rX++)
-                    if ((pixel & (0x80 >> rX)) != 0)
+                byte pixel = state.Memory[state.I + y];
+                for (var x = 0; x < 8; x++)
+                {
+                    if((pixel & (0x80 >> x)) != 0)
                     {
-                        if (Display[(x + rX) % 64, (y + rY) % 32] == 1)
-                            V[0xF] = 1;
-                        Display[(x + rX) % 64, (y + rY) % 32] ^= 1;
+                        if (state.Display[(posX + x) % 64, (posY + y) % 32] == 1)
+                            state.V[0xF] = 1;
+                        state.Display[(posX + x) % 64, (posY + y) % 32] ^= 1;
                     }
+                }
             }
-
             Draw = true;
+        }
+        private void SkipInput(Opcode data)
+        {
+            switch(data.NN)
+            {
+                case 0x9E:
+                    if(state.Input[state.V[data.X]]) state.PC += 2;
+                    break;
+                case 0xA1:
+                    if(!state.Input[state.V[data.X]]) state.PC += 2;
+                    break;
+                default:
+                    throw new IllegalOpcodeException($"Illegal input opcode {data.opcode:X4}", data.opcode);
+            }
+        }
+        private void Arithmetic(Opcode data)
+        {
+            try
+            {
+                opcodesArithmetic[data.N](data);
+            }
+            catch (KeyNotFoundException)
+            {
+                // there's nothing to do here except throw another exception
+                throw new IllegalOpcodeException($"Illegal arithmetic opcode {data.opcode:X4}", data.opcode);
+            }
+        }
+        private void Misc(Opcode data)
+        {
+            try
+            {
+                opcodesMisc[data.NN](data);
+            }
+            catch (KeyNotFoundException)
+            {
+                // there's nothing to do here except throw another exception
+                throw new IllegalOpcodeException($"Illegal misc opcode {data.opcode:X4}", data.opcode);
+            }
+        }
+        #endregion
+
+        #region Arithmetic Opcodes
+
+        private void MoveRegisters(Opcode data)
+        {
+            state.V[data.X] = state.V[data.Y];
+        }
+        private void OrRegisters(Opcode data)
+        {
+            state.V[data.X] |= state.V[data.Y];
+            if(InterpreterMode == Chip8InterpreterMode.CosmacVIP)
+                state.V[0xF] = 0;
+        }
+        private void AndRegisters(Opcode data)
+        {
+            state.V[data.X] &= state.V[data.Y];
+            if(InterpreterMode == Chip8InterpreterMode.CosmacVIP)
+                state.V[0xF] = 0;
+        }
+        private void XorRegisters(Opcode data)
+        {
+            state.V[data.X] ^= state.V[data.Y];
+            if(InterpreterMode == Chip8InterpreterMode.CosmacVIP)
+                state.V[0xF] = 0;
+        }
+        private void AddRegisters(Opcode data)
+        {
+            ushort temp = (ushort)(state.V[data.X] + state.V[data.Y]);
+            state.V[0xF] = (byte)((temp > 255) ? 1 : 0);
+            state.V[data.X] = (byte)((byte)temp & 0xFF);
+        }
+        private void SubtractRegisters(Opcode data)
+        {
+            state.V[0xF] = (byte)((state.V[data.X] < state.V[data.Y]) ? 0 : 1);
+            state.V[data.X] = (byte)(state.V[data.X] - state.V[data.Y]);
+        }
+        private void ShiftRegistersRight(Opcode data)
+        {
+            if(InterpreterMode == Chip8InterpreterMode.Schip)
+                data.Y = data.X;
+            
+            state.V[data.X] = (byte)(state.V[data.Y] >> 1);
+            state.V[0xF] = (byte)(((state.V[data.Y] & 0x1) != 0) ? 1 : 0);
+        }
+        private void SubtractRegistersAlt(Opcode data)
+        {
+            state.V[0xF] = (byte)((state.V[data.X] > state.V[data.Y]) ? 0 : 1);
+            state.V[data.X] = (byte)(state.V[data.Y] - state.V[data.X]);
+        }
+        private void ShiftRegistersLeft(Opcode data)
+        {
+            if(InterpreterMode == Chip8InterpreterMode.Schip)
+                data.Y = data.X;
+            
+            state.V[data.X] = (byte)(state.V[data.Y] << 1);
+            state.V[0xF] = (byte)((((state.V[data.Y] >> 7) & 0x1) != 0) ? 1 : 0);
+        }
+            
+        #endregion
+
+        #region Misc Opcodes
+        private void LoadDelay(Opcode data)
+        {
+            state.V[data.X] = state.Delay;
+        }
+
+        private void WaitForKeypress(Opcode data)
+        {
+            state.PC -= 2;
+            for (var i = 0; i < state.Input.Length; i++)
+            {
+                if(state.Input[i])
+                {
+                    state.V[data.X] = (byte)i;
+                    state.PC += 2;
+                    break;
+                }
+            }
+        }
+
+        private void SetDelay(Opcode data)
+        {
+            state.Delay = state.V[data.X];
+        }
+
+        private void SetSound(Opcode data)
+        {
+            state.Sound = state.V[data.X];
+        }
+
+        private void AddRegisterToIndex(Opcode data)
+        {
+            state.I += state.V[data.X];
+        }
+
+        private void LoadIndexFont(Opcode data)
+        {
+            state.I = (ushort)(5 * state.V[data.X]);
+        }
+
+        private void LoadIndexFontSuper(Opcode data)
+        {
+            // Not implemented
+        }
+
+        private void StoreBCD(Opcode data)
+        {
+            state.Memory[state.I] = (byte)(state.V[data.X] / 100 % 10);
+            state.Memory[state.I + 1] = (byte)(state.V[data.X] / 10 % 10);
+            state.Memory[state.I + 2] = (byte)(state.V[data.X]% 10);
+        }
+
+        private void StoreRegisters(Opcode data)
+        {
+            for (var i = 0; i <= data.X; i++)
+            {
+                state.Memory[i + state.I] = state.V[i];
+            }
+            if (InterpreterMode != Chip8InterpreterMode.Schip)
+            {
+                state.I += (ushort)(data.X + 1);
+            }
+        }
+        private void LoadRegisters(Opcode data)
+        {
+            for (var i = 0; i <= data.X; i++)
+            {
+                state.V[i] = state.Memory[i + state.I];
+            }
+            if (InterpreterMode != Chip8InterpreterMode.Schip)
+            {
+                state.I += (ushort)(data.X + 1);
+            }
         }
 
         #endregion
     }
 
-    public enum Chip8WrappingMode
-    {
-        Wrap,
-        DoNotDraw
-    }
-
+    /// <summary>
+    /// The interpretation mode that the interpretor will use.
+    /// </summary>
     public enum Chip8InterpreterMode
     {
-        Cosmac,
-        Schip
+        /// <summary>
+        /// The original COSMAC VIP interpretation style.
+        /// </summary>
+        CosmacVIP,
+        /// <summary>
+        /// Based on the CHIP-48 interpreter. Note that this does not make this compatible with SCHIP programs.
+        /// </summary>
+        Schip,
+        /// <summary>
+        /// Based on the Octo interpreter.
+        /// </summary>
+        Octo
     }
 
     public class IllegalOpcodeException : Exception
@@ -584,5 +491,38 @@ namespace Chip8
         public ushort[] Stack;
         public bool[] Input;
         public byte[,] Display;
+
+        public EmulationState(Chip8InterpreterMode settings = Chip8InterpreterMode.Schip)
+        {
+            V = new byte[16];
+            Memory = new byte[0x1000];
+            I = PC = 0;
+            Delay = Sound = SP = 0;
+            Input = new bool[16];
+            Display = new byte[64, 32];
+            Stack = settings == Chip8InterpreterMode.CosmacVIP ? new ushort[12] : new ushort[16];
+        }
+    }
+
+    /// <summary>
+    /// A struct containing opcode data. Sends everything that an opcode should ever need to know.
+    /// </summary>
+    public struct Opcode
+    {
+        public ushort opcode;
+        public ushort NNN;
+        public byte NN, X, Y, N;
+
+        public override string ToString() => $"{opcode:X4} (X: {X:X}, Y: {Y:X}, N: {N:X}, NN: {NN:X2}, NNN: {NNN:X3})";
+
+        public Opcode(ushort opcode)
+        {
+            this.opcode = opcode;
+            NNN = (ushort)(opcode & 0xFFF);
+            NN = (byte)(opcode & 0xFF);
+            X = (byte)((opcode >> 8) & 0xF);
+            Y = (byte)((opcode >> 4) & 0xF);
+            N = (byte)(opcode & 0xF);
+        }
     }
 }

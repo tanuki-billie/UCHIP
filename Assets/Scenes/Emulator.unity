@@ -817,8 +817,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   romPath: ROMs/Pong.ch8
   interpreterMode: 1
-  backgroundColor: {r: 1, g: 1, b: 1, a: 1}
-  foregroundColor: {r: 0.3301887, g: 0.3301887, b: 0.3301887, a: 1}
+  backgroundColor: {r: 0, g: 0, b: 0, a: 1}
+  foregroundColor: {r: 1, g: 1, b: 1, a: 1}
   display: {fileID: 195597817}
   audioFrequency: 440
   audioSampleRate: 44100
