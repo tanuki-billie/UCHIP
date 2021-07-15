@@ -12,7 +12,7 @@ namespace Chip8
         [SerializeField] private Chip8InterpreterMode interpreterMode;
         [Header("Display")] [SerializeField] private Color backgroundColor = Color.black;
         [SerializeField] private Color foregroundColor = Color.white;
-        [SerializeField] private RawImage display;
+        [SerializeField] private MeshRenderer display;
         private Texture2D displayTexture;
         [Header("Audio")] private AudioSource _source;
         [SerializeField] private float audioFrequency = 440f;
@@ -95,7 +95,7 @@ namespace Chip8
                 _stepCount++;
                 if (_emulator.Draw)
                     RenderChipFrame(ref displayTexture, _emulator.state.Display, backgroundColor, foregroundColor);
-                display.texture = displayTexture;
+                display.material.mainTexture = displayTexture;
                 // RenderFrame(emulator.Display);
             }
         }
