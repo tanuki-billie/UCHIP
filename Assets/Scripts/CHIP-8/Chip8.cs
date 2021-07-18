@@ -61,7 +61,15 @@ namespace Chip8
         /// In your own renderer, this can be used for a <b>massive</b> performance boost.
         /// </remarks>
         public bool Draw { get; private set; }
-
+        /// <summary>
+        /// RNG for the random number opcode
+        /// </summary>
+        /// <returns></returns>
+        private Random random = new Random();
+        /// <summary>
+        /// Buffer for storing random bytes
+        /// </summary>
+        private byte[] buffer = new byte[1];
         /// <summary>
         /// Creates a new instance of a CHIP-8 interpreter. You must power the system before you can start running a ROM.
         /// </summary>
@@ -319,7 +327,8 @@ namespace Chip8
         /// <param name="data">The opcode. Uses the second nibble to determine register and the second byte as the mask.</param>
         private void LoadRandom(Opcode data)
         {
-            state.V[data.X] = (byte)(UnityEngine.Random.Range(0, 255) & data.NN);
+            random.NextBytes(buffer);
+            state.V[data.X] = (byte)(buffer[0] & data.NN);
         }
         /// <summary>
         /// Draws a sprite to the display using XOR. If any pixels are turned off, register F is set to 1. Otherwise, it is set to 0.
