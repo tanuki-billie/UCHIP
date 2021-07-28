@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.IO;
 using UnityEngine.UI;
 
 namespace Chip8
@@ -19,9 +20,6 @@ namespace Chip8
         [SerializeField] private float audioSampleRate = 44100;
         [SerializeField] private float audioWavelength = 0.16f;
         private int _timeIndex = 0;
-        
-        private ulong _stepCount;
-        public string disassemblyContents;
         // The default rom that is loaded is defined here. It's basically telling the player that there is an error with their game.
         private byte[] _romData = { 0x12, 0x1E, 0x24, 0x24, 0x00, 0x3C, 0x42, 0x92, 
                                     0xD5, 0xB5, 0xB5, 0x92, 0x62, 0x85, 0xB5, 0x97, 
@@ -92,7 +90,6 @@ namespace Chip8
             if (_emulator.Powered)
             {
                 _emulator.Cycle();
-                _stepCount++;
                 if (_emulator.Draw)
                     RenderChipFrame(ref displayTexture, _emulator.state.Display, backgroundColor, foregroundColor);
                 display.material.mainTexture = displayTexture;

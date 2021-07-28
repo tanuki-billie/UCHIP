@@ -26,7 +26,7 @@ namespace Chip8
         /// <summary>
         /// Data for the fontset used by the interpreter.
         /// </summary>
-        private static readonly byte[] FontSet =
+        private static readonly byte[] LoresFontSet =
         {
             0xF0, 0x90, 0x90, 0x90, 0xF0, //0
             0x20, 0x60, 0x20, 0x20, 0x70, //1
@@ -45,6 +45,10 @@ namespace Chip8
             0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
             0xF0, 0x80, 0xF0, 0x80, 0x80 //F
         };
+        /// <summary>
+        /// The offset to store the lores fontset in interpreter memory.
+        /// </summary>
+        private ushort loresFontOffset = 0;
         /// <summary>
         /// Determines whether the interpreter is processing commands or not.
         /// </summary>
@@ -65,9 +69,10 @@ namespace Chip8
         /// RNG for the random number opcode
         /// </summary>
         /// <returns></returns>
-        private Random random = new Random();
+        private readonly Random random = new Random();
+        
         /// <summary>
-        /// Buffer for storing random bytes
+        /// Buffer for storing random bytes - don't know why I need to store this in a 
         /// </summary>
         private byte[] buffer = new byte[1];
         /// <summary>
@@ -175,9 +180,10 @@ namespace Chip8
         /// <summary>
         /// Seperate function to write the fontset to memory.
         /// </summary>
-        private void WriteFontset()
+        private void WriteFontset(ushort offset = 0)
         {
-            for (var i = 0; i < 80; i++) state.Memory[i] = FontSet[i];
+            loresFontOffset = offset;
+            for (var i = 0; i < 80; i++) state.Memory[i + offset] = LoresFontSet[i];
         }
 
         /// <summary>
@@ -205,8 +211,8 @@ namespace Chip8
         /// </summary>
         public void DecrementTimers()
         {
-            if(state.Sound > 0) state.Sound--;
-            if(state.Delay > 0) state.Delay--;
+            if (state.Sound > 0) state.Sound--;
+            if (state.Delay > 0) state.Delay--;
         }
         #region Standard Opcodes
         /// <summary>
@@ -215,7 +221,7 @@ namespace Chip8
         /// <param name="data">The opcode.</param>
         private void InterpreterSystemCommands(Opcode data)
         {
-            switch(data.NN)
+            switch (data.NN)
             {
                 case 0xE0:
                     for (var x = 0; x < 64; x++)
@@ -257,7 +263,7 @@ namespace Chip8
         /// <param name="data">The opcode. Uses the second nibble for determining the register, and the second byte for the immediate value.</param>
         private void SkipIfRegisterEqualsImmediate(Opcode data)
         {
-            if(state.V[data.X] == data.NN)
+            if (state.V[data.X] == data.NN)
                 state.PC += 2;
         }
         /// <summary>
@@ -266,7 +272,7 @@ namespace Chip8
         /// <param name="data">The opcode. Uses the second nibble for determining the register, and the second byte for the immediate value.</param>
         private void SkipIfRegisterNotEqualsImmediate(Opcode data)
         {
-            if(state.V[data.X] != data.NN)
+            if (state.V[data.X] != data.NN)
                 state.PC += 2;
         }
         /// <summary>
@@ -275,7 +281,7 @@ namespace Chip8
         /// <param name="data">The opcode. Uses the second and third nibbles for determining which registers to compare.</param>
         private void SkipIfRegisterEqualsRegister(Opcode data)
         {
-            if(state.V[data.X] == state.V[data.Y])
+            if (state.V[data.X] == state.V[data.Y])
                 state.PC += 2;
         }
         /// <summary>
@@ -301,7 +307,7 @@ namespace Chip8
         /// <param name="data">The opcode. Uses the second and third nibbles for determining which registers to compare.</param>
         private void SkipIfRegisterNotEqualsRegister(Opcode data)
         {
-            if(state.V[data.X] != state.V[data.Y])
+            if (state.V[data.X] != state.V[data.Y])
                 state.PC += 2;
         }
         /// <summary>
@@ -348,7 +354,7 @@ namespace Chip8
                 byte pixel = state.Memory[state.I + y];
                 for (var x = 0; x < 8; x++)
                 {
-                    if((pixel & (0x80 >> x)) != 0)
+                    if ((pixel & (0x80 >> x)) != 0)
                     {
                         if (state.Display[(posX + x) % 64, (posY + y) % 32] == 1)
                             state.V[0xF] = 1;
@@ -365,13 +371,13 @@ namespace Chip8
         /// <exception cref="IllegalOpcodeException">Thrown when an illegal opcode is found.</exception>
         private void SkipInput(Opcode data)
         {
-            switch(data.NN)
+            switch (data.NN)
             {
                 case 0x9E:
-                    if(state.Input[state.V[data.X]]) state.PC += 2;
+                    if (state.Input[state.V[data.X]]) state.PC += 2;
                     break;
                 case 0xA1:
-                    if(!state.Input[state.V[data.X]]) state.PC += 2;
+                    if (!state.Input[state.V[data.X]]) state.PC += 2;
                     break;
                 default:
                     throw new IllegalOpcodeException($"Illegal input opcode {data.opcode:X4}", data.opcode);
@@ -429,7 +435,7 @@ namespace Chip8
         private void OrRegisters(Opcode data)
         {
             state.V[data.X] |= state.V[data.Y];
-            if(InterpreterMode == Chip8InterpreterMode.CosmacVIP)
+            if (InterpreterMode == Chip8InterpreterMode.CosmacVIP)
                 state.V[0xF] = 0;
         }
         /// <summary>
@@ -439,7 +445,7 @@ namespace Chip8
         private void AndRegisters(Opcode data)
         {
             state.V[data.X] &= state.V[data.Y];
-            if(InterpreterMode == Chip8InterpreterMode.CosmacVIP)
+            if (InterpreterMode == Chip8InterpreterMode.CosmacVIP)
                 state.V[0xF] = 0;
         }
         /// <summary>
@@ -449,7 +455,7 @@ namespace Chip8
         private void XorRegisters(Opcode data)
         {
             state.V[data.X] ^= state.V[data.Y];
-            if(InterpreterMode == Chip8InterpreterMode.CosmacVIP)
+            if (InterpreterMode == Chip8InterpreterMode.CosmacVIP)
                 state.V[0xF] = 0;
         }
         /// <summary>
@@ -478,9 +484,9 @@ namespace Chip8
         /// <remarks> In SCHIP mode, the shift is performed in place on register X. Otherwise, the shift is performed on register Y and stored in register X. </remarks>
         private void ShiftRegistersRight(Opcode data)
         {
-            if(InterpreterMode == Chip8InterpreterMode.Schip)
+            if (InterpreterMode == Chip8InterpreterMode.Schip)
                 data.Y = data.X;
-            
+
             state.V[data.X] = (byte)(state.V[data.Y] >> 1);
             state.V[0xF] = (byte)(((state.V[data.Y] & 0x1) != 0) ? 1 : 0);
         }
@@ -500,13 +506,13 @@ namespace Chip8
         /// <remarks> In SCHIP mode, the shift is performed in place on register X. Otherwise, the shift is performed on register Y and stored in register X. </remarks>
         private void ShiftRegistersLeft(Opcode data)
         {
-            if(InterpreterMode == Chip8InterpreterMode.Schip)
+            if (InterpreterMode == Chip8InterpreterMode.Schip)
                 data.Y = data.X;
-            
+
             state.V[data.X] = (byte)(state.V[data.Y] << 1);
             state.V[0xF] = (byte)((((state.V[data.Y] >> 7) & 0x1) != 0) ? 1 : 0);
         }
-            
+
         #endregion
 
         #region Misc Opcodes
@@ -527,7 +533,7 @@ namespace Chip8
             state.PC -= 2;
             for (var i = 0; i < state.Input.Length; i++)
             {
-                if(state.Input[i])
+                if (state.Input[i])
                 {
                     state.V[data.X] = (byte)i;
                     state.PC += 2;
@@ -585,7 +591,7 @@ namespace Chip8
         {
             state.Memory[state.I] = (byte)(state.V[data.X] / 100 % 10);
             state.Memory[state.I + 1] = (byte)(state.V[data.X] / 10 % 10);
-            state.Memory[state.I + 2] = (byte)(state.V[data.X]% 10);
+            state.Memory[state.I + 2] = (byte)(state.V[data.X] % 10);
         }
         /// <summary>
         /// Stores registers 0 to X (specified) at the current address of I.

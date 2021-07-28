@@ -919,6 +919,7 @@ MonoBehaviour:
   audioFrequency: 440
   audioSampleRate: 44100
   audioWavelength: 1000
+  inputActionsAsset: {fileID: -944628639613478452, guid: e58b8ee7c8517ec4881b9ff03309352d, type: 3}
   disassemblyContents: 
 --- !u!1 &2110771965
 GameObject:
