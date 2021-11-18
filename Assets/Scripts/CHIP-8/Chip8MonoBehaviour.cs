@@ -16,9 +16,9 @@ namespace Chip8
         [SerializeField] private MeshRenderer display;
         private Texture2D displayTexture;
         [Header("Audio")] private AudioSource _source;
-        [SerializeField] private float audioFrequency = 440f;
-        [SerializeField] private float audioSampleRate = 44100;
-        [SerializeField] private float audioWavelength = 0.16f;
+        private readonly float audioFrequency = 440f;
+        private readonly float audioSampleRate = 44100f;
+        private readonly float audioWavelength = 1000f;
         private int _timeIndex = 0;
         // The default rom that is loaded is defined here. It's basically telling the player that there is an error with their game.
         private byte[] _romData = { 0x12, 0x1E, 0x24, 0x24, 0x00, 0x3C, 0x42, 0x92, 
@@ -48,16 +48,11 @@ namespace Chip8
             if (rom == null)
             {
                 Debug.LogWarning($"Could not find the rom at {romPath}. Loading default rom...");
-                // Destroy(this);
-                // return;
             }
             else
             {
                 _romData = rom.bytes;
             }
-
-            
-            // DisassembleROM();
 
             _emulator.PowerAndLoadRom(_romData, interpreterMode);
         }
@@ -93,7 +88,6 @@ namespace Chip8
                 if (_emulator.Draw)
                     RenderChipFrame(ref displayTexture, _emulator.state.Display, backgroundColor, foregroundColor);
                 display.material.mainTexture = displayTexture;
-                // RenderFrame(emulator.Display);
             }
         }
 

@@ -69,7 +69,7 @@ namespace Chip8
         /// RNG for the random number opcode
         /// </summary>
         /// <returns></returns>
-        private readonly Random random = new Random();
+        private readonly Random random = new();
         
         /// <summary>
         /// Buffer for storing random bytes - don't know why I need to store this in a 
@@ -643,9 +643,9 @@ namespace Chip8
         /// </summary>
         Schip,
         /// <summary>
-        /// Based on the Octo interpreter.
+        /// Based on the Octo (XO-CHIP) interpreter.
         /// </summary>
-        Octo
+        XoChip
     }
 
     public class IllegalOpcodeException : Exception
@@ -693,28 +693,6 @@ namespace Chip8
             Input = new bool[16];
             Display = new byte[64, 32];
             Stack = settings == Chip8InterpreterMode.CosmacVIP ? new ushort[12] : new ushort[16];
-        }
-    }
-
-    /// <summary>
-    /// A struct containing opcode data. Sends everything that an opcode should ever need to know.
-    /// </summary>
-    public struct Opcode
-    {
-        public ushort opcode;
-        public ushort NNN;
-        public byte NN, X, Y, N;
-
-        public override string ToString() => $"{opcode:X4} (X: {X:X}, Y: {Y:X}, N: {N:X}, NN: {NN:X2}, NNN: {NNN:X3})";
-
-        public Opcode(ushort opcode)
-        {
-            this.opcode = opcode;
-            NNN = (ushort)(opcode & 0xFFF);
-            NN = (byte)(opcode & 0xFF);
-            X = (byte)((opcode >> 8) & 0xF);
-            Y = (byte)((opcode >> 4) & 0xF);
-            N = (byte)(opcode & 0xF);
         }
     }
 }
