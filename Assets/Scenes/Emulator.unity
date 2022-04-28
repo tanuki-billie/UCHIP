@@ -905,13 +905,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   romPath: ROMS/Blitz.ch8
-  interpreterMode: 1
+  interpreterMode: 0
   backgroundColor: {r: 0.8962264, g: 0.8962264, b: 0.8962264, a: 1}
   foregroundColor: {r: 0.23067978, g: 1, b: 0.18396229, a: 1}
   display: {fileID: 949265109}
-  audioFrequency: 440
-  audioSampleRate: 44100
-  audioWavelength: 1000
 --- !u!1 &2110771965
 GameObject:
   m_ObjectHideFlags: 0
