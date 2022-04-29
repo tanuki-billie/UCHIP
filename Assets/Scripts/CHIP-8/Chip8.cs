@@ -377,15 +377,20 @@ namespace Chip8
             // New SCHIP compliant code.
             var posX = state.V[data.X];
             var posY = state.V[data.Y];
-            bool setFlags;
+            byte setFlags;
 
             if (data.N > 0 || !state.Display.hiresMode)
             {
+                UnityEngine.Debug.Log($"Drawing lores sprite (to be sure, N is {data.N})");
                 var sprite = state.Memory[state.I..(state.I + data.N)];
-                setFlags = state.Display.DrawSpriteLores(posX, posY, data.N, sprite);
+                if(state.Display.hiresMode)
+                    setFlags = state.Display.DrawLoresSpriteHires(posX, posY, data.N, sprite);
+                else
+                    setFlags = state.Display.DrawSpriteLores(posX, posY, data.N, sprite);
             }
             else
             {
+                UnityEngine.Debug.Log("Drawing hires sprite");
                 var sprData = state.Memory[state.I..(state.I + 32)];
                 ushort[] sprite = new ushort[16];
 
@@ -395,10 +400,10 @@ namespace Chip8
                     sprite[i / 2] = val;
                 }
 
-                setFlags = state.Display.DrawSprite(posX, posY, sprite);
+                setFlags = state.Display.DrawSpriteHires(posX, posY, sprite);
             }
 
-            state.V[0xF] = (byte)(setFlags ? 1 : 0);
+            state.V[0xF] = setFlags;
             Draw = true;
         }
         /// <summary>
@@ -451,7 +456,7 @@ namespace Chip8
             catch (KeyNotFoundException)
             {
                 // there's nothing to do here except throw another exception
-                throw new IllegalOpcodeException($"Illegal misc opcode {data.opcode:X4}", data.opcode);
+                throw new IllegalOpcodeException($"Illegal misc opcode {data.opcode:X4} & PC = {state.PC}", data.opcode);
             }
         }
         #endregion

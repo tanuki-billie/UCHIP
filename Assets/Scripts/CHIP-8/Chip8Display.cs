@@ -12,6 +12,7 @@ namespace Chip8
 
         public void SetPixel(int x, int y, bool lores = false)
         {
+            UnityEngine.Debug.Log($"setting pixel {x}, {y}");
             if(lores)
             {
                 pixels[x * 2, y * 2] ^= 1;
@@ -29,9 +30,9 @@ namespace Chip8
                     pixels[j, i] = 0;
         }
 
-        public bool DrawSpriteLores(int x, int y, int n, byte[] sprite)
+        public byte DrawSpriteLores(int x, int y, int n, byte[] sprite)
         {
-            bool unset = false;
+            byte set = 0;
             for(var sy = 0; sy < n; sy++)
             {
                 var pixel = sprite[sy];
@@ -54,13 +55,51 @@ namespace Chip8
                         var yPos = rawY * 2;
                         if(pixels[xPos, yPos] == 1)
                         {
-                            unset = true;
+                            set = 1;
                         }
                         SetPixel(rawX, rawY, true);
                     }
                 }
             }
-            return unset;
+            return set;
+        }
+
+        public byte DrawLoresSpriteHires(int x, int y, int n, byte[] sprite)
+        {
+            UnityEngine.Debug.Log("hi");
+            byte rowsSet = 0;
+            for (var sy = 0; sy < n; sy++)
+            {
+                var pixel = sprite[sy];
+                bool rowCollides = false;
+                for (var sx = 0; sx < 8; sx++)
+                {
+                    if ((pixel & (0x80 >> sx)) != 0)
+                    {
+                        var rawX = (x + sx) % WIDTH;
+                        var rawY = (y + sy);
+                        UnityEngine.Debug.Log($"pixel coords: {rawX}, {rawY}");
+                        if (doWraparound)
+                        {
+                            rawY %= HEIGHT;
+                        }
+                        else
+                        {
+                            if (rawY >= HEIGHT)
+                            {
+                                rowCollides = true;
+                                break;
+                            }
+                        }
+                        if (pixels[rawX, rawY] == 1)
+                            rowCollides = true;
+                        SetPixel(rawX, rawY);
+                    }
+                }
+
+                if (rowCollides) rowsSet++;
+            }
+            return rowsSet;
         }
 
         public void SetHires(bool set = false)
@@ -118,13 +157,14 @@ namespace Chip8
             }
         }
 
-        public bool DrawSprite(int x, int y, ushort[] sprite)
+        public byte DrawSpriteHires(int x, int y, ushort[] sprite)
         {
-            bool unset = false;
+            byte rowsSet = 0;
 
             for(var sy = 0; sy < 0xF; sy++)
             {
                 var pixel = sprite[sy];
+                bool rowCollides = false;
                 for (var sx = 0; sx < 0xF; sx++)
                 {
                     if((pixel & (0x8000 >> sx)) != 0)
@@ -139,17 +179,22 @@ namespace Chip8
                         else
                         {
                             if (rawY >= HEIGHT)
-                                continue;
+                            {
+                                rowCollides = true;
+                                break;
+                            }
                         }
 
                         if (pixels[rawX, rawY] == 1)
-                            unset = true;
+                            rowCollides = true;
                         SetPixel(rawX, rawY);
                     }
                 }
+
+                if (rowCollides) rowsSet++;
             }
 
-            return unset;
+            return rowsSet;
         }
 
         public Chip8Display(bool hires = false, bool wraparound = false)
