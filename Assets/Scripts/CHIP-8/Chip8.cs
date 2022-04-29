@@ -126,7 +126,9 @@ namespace Chip8
                 { 0x30, LoadIndexFontSuper },
                 { 0x33, StoreBCD },
                 { 0x55, StoreRegisters },
-                { 0x65, LoadRegisters }
+                { 0x65, LoadRegisters },
+                { 0x75, StoreRegistersRPL },
+                { 0x85, ReadRegistersRPL }
             };
 
             state = new EmulationState(interpreterMode);
@@ -223,6 +225,12 @@ namespace Chip8
         /// <param name="data">The opcode.</param>
         private void InterpreterSystemCommands(Opcode data)
         {
+            if(data.Y == 0xC)
+            {
+                state.Display.ScrollVertical(data.N, false);
+                Draw = true;
+                return;
+            }
             switch (data.NN)
             {
                 case 0xE0:
@@ -231,6 +239,27 @@ namespace Chip8
                     break;
                 case 0xEE:
                     state.PC = state.Stack[state.SP--];
+                    break;
+                case 0xFB:
+                    // Scroll 4 pixels right (2 in low res mode)
+                    state.Display.ScrollHorizontal();
+                    Draw = true;
+                    break;
+                case 0xFC:
+                    // Scroll 4 pixels left (2 in low res mode)
+                    state.Display.ScrollHorizontal(false);
+                    Draw = true;
+                    break;
+                case 0xFD:
+                    // Exit the interpreter
+                    break;
+                case 0xFE:
+                    // Disable hires mode
+                    state.Display.SetHires(false);
+                    break;
+                case 0xFF:
+                    // Enable hires mode
+                    state.Display.SetHires(true);
                     break;
                 default:
                     // Just keep the program where it is at
@@ -346,33 +375,30 @@ namespace Chip8
             // Oh boy.
 
             // New SCHIP compliant code.
-            UnityEngine.Debug.Log("Drawing!");
             var posX = state.V[data.X];
             var posY = state.V[data.Y];
-            var sprite = state.Memory[state.I..(state.I + data.N)];
-            var setFlags = state.Display.DrawSpriteLores(posX, posY, data.N, sprite);
+            bool setFlags;
+
+            if (data.N > 0 || !state.Display.hiresMode)
+            {
+                var sprite = state.Memory[state.I..(state.I + data.N)];
+                setFlags = state.Display.DrawSpriteLores(posX, posY, data.N, sprite);
+            }
+            else
+            {
+                var sprData = state.Memory[state.I..(state.I + 32)];
+                ushort[] sprite = new ushort[16];
+
+                for(var i = 0; i < 32; i += 2)
+                {
+                    ushort val = (ushort)(sprData[i] << 8 | sprData[i + 1]);
+                    sprite[i / 2] = val;
+                }
+
+                setFlags = state.Display.DrawSprite(posX, posY, sprite);
+            }
 
             state.V[0xF] = (byte)(setFlags ? 1 : 0);
-
-            // Old CHIP-8 only mode.
-            //state.V[0xF] = 0;
-
-            //var posX = state.V[data.X];
-            //var posY = state.V[data.Y];
-
-            //for (var y = 0; y < data.N; y++)
-            //{
-            //    byte pixel = state.Memory[state.I + y];
-            //    for (var x = 0; x < 8; x++)
-            //    {
-            //        if ((pixel & (0x80 >> x)) != 0)
-            //        {
-            //            if (state.Display[(posX + x) % 64, (posY + y) % 32] == 1)
-            //                state.V[0xF] = 1;
-            //            state.Display[(posX + x) % 64, (posY + y) % 32] ^= 1;
-            //        }
-            //    }
-            //}
             Draw = true;
         }
         /// <summary>
@@ -637,6 +663,36 @@ namespace Chip8
             }
         }
 
+        /// <summary>
+        /// Stores registers 0 to X in RPL user flags.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
+        /// <remarks>CHIP-48 only supports RPL going up to 7.</remarks>
+        private void StoreRegistersRPL(Opcode data)
+        {
+            var x = Math.Max(data.X, (byte)0x7);
+
+            for (var i = 0; i < x; i++)
+            {
+                state.RPL[i] = state.V[i];
+            }
+        }
+
+        /// <summary>
+        /// Reads registers 0 to X from RPL user flags.
+        /// </summary>
+        /// <param name="data">The opcode. Used to specify the register.</param>
+        /// <remarks>CHIP-48 only supports RPL going up to 7.</remarks>
+        private void ReadRegistersRPL(Opcode data)
+        {
+            var x = Math.Max(data.X, (byte)0x7);
+
+            for (var i = 0; i < x; i++)
+            {
+                state.V[i] = state.RPL[i];
+            }
+        }
+
         #endregion
     }
 
@@ -650,7 +706,7 @@ namespace Chip8
         /// </summary>
         CosmacVIP,
         /// <summary>
-        /// Based on the CHIP-48 interpreter. Note that this does not make this compatible with SCHIP programs.
+        /// Based on the CHIP-48 interpreter.
         /// </summary>
         Schip,
         /// <summary>
@@ -689,16 +745,17 @@ namespace Chip8
     {
         public byte[] V;
         public byte[] Memory;
+        public byte[] RPL;
         public ushort I, PC;
         public byte Delay, Sound, SP;
         public ushort[] Stack;
         public bool[] Input;
-        //public byte[,] Display;
         public Chip8Display Display;
 
         public EmulationState(Chip8InterpreterMode settings = Chip8InterpreterMode.Schip)
         {
             V = new byte[16];
+            RPL = new byte[8];
             Memory = new byte[0x1000];
             I = PC = 0;
             Delay = Sound = SP = 0;

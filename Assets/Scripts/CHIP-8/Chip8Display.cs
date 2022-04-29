@@ -1,7 +1,3 @@
-using System;
-using UnityEngine;
-using System.Collections;
-
 namespace Chip8
 {
     public struct Chip8Display
@@ -18,14 +14,11 @@ namespace Chip8
         {
             if(lores)
             {
-                Debug.Log($"Setting pixel at {x}, {y} (lores)");
                 pixels[x * 2, y * 2] ^= 1;
                 var val = pixels[x * 2, y * 2];
                 pixels[x * 2 + 1, y * 2] = pixels[x * 2 + 1, y * 2 + 1] = pixels[x * 2, y * 2 + 1] = val;
                 return;
             }
-
-            Debug.Log($"Setting pixel at {x}, {y}");
             pixels[x, y] ^= 1;
         }
 
@@ -38,26 +31,23 @@ namespace Chip8
 
         public bool DrawSpriteLores(int x, int y, int n, byte[] sprite)
         {
-            Debug.Log($"Drawing sprite at ({x}, {y}) with {n} lines");
             bool unset = false;
             for(var sy = 0; sy < n; sy++)
             {
                 var pixel = sprite[sy];
-                Debug.Log($"Byte data: {pixel}");
                 for (var sx = 0; sx < 8; sx++)
                 {
                     if((pixel & (0x80 >> sx)) != 0)
                     {
-                        var rawX = (x + sx);
+                        var rawX = (x + sx) % 64;
                         var rawY = (y + sy);
                         if(doWraparound)
                         {
-                            rawX %= 64;
                             rawY %= 32;
                         }
                         else
                         {
-                            if (rawX >= 64 || rawY >= 32)
+                            if (rawY >= 32)
                                 continue;
                         }
                         var xPos = rawX * 2;
@@ -70,8 +60,95 @@ namespace Chip8
                     }
                 }
             }
+            return unset;
+        }
 
-            Debug.Log("Hi!");
+        public void SetHires(bool set = false)
+        {
+            hiresMode = set;
+        }
+
+        public void ScrollHorizontal(bool scrollRight = true)
+        {
+            if(scrollRight)
+            {
+                for (var y = HEIGHT - 1; y >= 0; y++)
+                    for (var x = WIDTH - 1; x >= 4; x++)
+                        pixels[x, y] = pixels[x - 4, y];
+
+                for (var y = 0; y < HEIGHT; y++)
+                    for (var x = 0; x < 4; x++)
+                        pixels[x, y] = 0;
+            }
+            else
+            {
+                for (var y = 0; y < HEIGHT - 4; y++)
+                    for (var x = 0; x < WIDTH - 4; x++)
+                        pixels[x, y] = pixels[x + 4, y];
+
+                for (var y = 0; y < HEIGHT; y++)
+                    for (var x = 1; x <= 4; x++)
+                        pixels[WIDTH - x, y] = 0;
+            }
+        }
+
+        public void ScrollVertical(int count, bool scrollUp = false)
+        {
+            // If we are in lores mode, we can go ahead and make sure our count is even
+            if(!hiresMode)
+            {
+                count >>= 1;
+                count <<= 1;
+            }
+
+            if(scrollUp)
+            {
+                // This isn't going to be used for schip, so no implementation rn
+            }
+            else
+            {
+                for (var x = 0; x < WIDTH; x++)
+                    for (var y = count; y < HEIGHT; y++)
+                        pixels[x, y] = pixels[x, y - count];
+
+                for (var x = 0; x < WIDTH; x++)
+                    for (var y = 0; y < count; y++)
+                        pixels[x, y] = 0;
+                        
+            }
+        }
+
+        public bool DrawSprite(int x, int y, ushort[] sprite)
+        {
+            bool unset = false;
+
+            for(var sy = 0; sy < 0xF; sy++)
+            {
+                var pixel = sprite[sy];
+                for (var sx = 0; sx < 0xF; sx++)
+                {
+                    if((pixel & (0x8000 >> sx)) != 0)
+                    {
+                        var rawX = (x + sx) % WIDTH;
+                        var rawY = (y + sy);
+                        
+                        if(doWraparound)
+                        {
+                            rawY %= HEIGHT;
+                        }
+                        else
+                        {
+                            if (rawY >= HEIGHT)
+                                continue;
+                        }
+
+                        if (pixels[rawX, rawY] == 1)
+                            unset = true;
+                        SetPixel(rawX, rawY);
+                    }
+                }
+            }
+
             return unset;
         }
 

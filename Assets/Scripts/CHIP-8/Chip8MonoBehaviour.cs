@@ -1,24 +1,28 @@
 using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using System.IO;
-using UnityEngine.UI;
 
 namespace Chip8
 {
     public class Chip8MonoBehaviour : MonoBehaviour
     {
         private Chip8 _emulator;
-        [Header("Emulator")] [SerializeField] private string romPath;
+        [Header("Emulator")] 
+        [SerializeField] private string resourcesRomPath;
         [SerializeField] private Chip8InterpreterMode interpreterMode;
-        [Header("Display")] [SerializeField] private Color backgroundColor = Color.black;
+        [Header("Display")] 
+        [SerializeField] private Color backgroundColor = Color.black;
         [SerializeField] private Color foregroundColor = Color.white;
         [SerializeField] private MeshRenderer display;
         private Texture2D displayTexture;
-        [Header("Audio")] private AudioSource _source;
+        [Header("Audio")]
+        [SerializeField] [Range(0, 1f)] private float Volume = 1f;
+        [SerializeField] private AudioEmulationType audioWave = AudioEmulationType.Sine;
+        private AudioSource _source;
         private readonly float audioFrequency = 440f;
         private readonly float audioSampleRate = 44100f;
         private readonly float audioWavelength = 1000f;
+        private bool paused = false;
         private int _timeIndex = 0;
         // The default rom that is loaded is defined here. It's basically telling the player that there is an error with their game.
         private byte[] _romData = { 0x12, 0x1E, 0x24, 0x24, 0x00, 0x3C, 0x42, 0x92, 
@@ -36,18 +40,30 @@ namespace Chip8
 
         private void Start()
         {
+            // Setup display texture
             displayTexture = new Texture2D(128, 64);
-            // Setup AudioSource
+
+            // Setup audio
             _source = gameObject.AddComponent<AudioSource>();
             _source.playOnAwake = false;
             _source.spatialBlend = 0;
             _source.Stop();
+            _source.volume = Volume;
+
+            // What type of audio wave we'd like to generate
+            OnGenerateWave += audioWave switch
+            {
+                AudioEmulationType.Sine => GenerateSine,
+                AudioEmulationType.Square => GenerateSquare,
+                _ => GenerateSine,
+            };
+
             // Load ROM into emulator
-            var rom = Resources.Load<TextAsset>(romPath);
+            var rom = Resources.Load<TextAsset>(resourcesRomPath);
             _emulator = new Chip8();
             if (rom == null)
             {
-                Debug.LogWarning($"Could not find the rom at {romPath}. Loading default rom...");
+                Debug.LogWarning($"Could not find the rom at {resourcesRomPath}. Loading default rom...");
             }
             else
             {
@@ -57,13 +73,22 @@ namespace Chip8
             _emulator.PowerAndLoadRom(_romData, interpreterMode);
         }
 
-        void Update()
+        private void OnDisable()
         {
-            Step();
-            
+            OnGenerateWave -= audioWave switch
+            {
+                AudioEmulationType.Sine => GenerateSine,
+                AudioEmulationType.Square => GenerateSquare,
+                _ => GenerateSine,
+            };
         }
 
-        void FixedUpdate()
+        private void Update()
+        {
+            Step();
+        }
+
+        private void FixedUpdate()
         {
             _emulator.DecrementTimers();
             if (_emulator.state.Sound > 0)
@@ -80,9 +105,9 @@ namespace Chip8
             }
         }
 
-        void Step()
+        private void Step()
         {
-            if (_emulator.Powered)
+            if (_emulator.Powered && !paused)
             {
                 _emulator.Cycle();
                 if (_emulator.Draw)
@@ -91,23 +116,24 @@ namespace Chip8
             }
         }
 
-        private void OnAudioFilterRead(float[] data, int channels)
+        private void TogglePause()
         {
-            for (int i = 0; i < data.Length; i += channels)
-            {
-                data[i] = GenerateSquare(_timeIndex, audioFrequency, audioSampleRate);
-                if(channels == 2)
-                    data[i+1] = GenerateSquare(_timeIndex, audioFrequency, audioSampleRate);
-
-                _timeIndex++;
-
-                if (_timeIndex >= audioSampleRate * audioWavelength * _emulator.state.Sound)
-                {
-                    _timeIndex = 0;
-                }
-            }
+            SetPauseState(!paused);
         }
 
+        private void SetPauseState(bool shouldPause = false)
+        {
+            paused = shouldPause;
+
+            if (paused)
+                _source.Pause();
+            else
+                _source.UnPause();
+        }
+
+        #endregion
+
+        #region Rendering
         public static void RenderChipFrame(ref Texture2D result, byte[,] data, Color bg, Color fg)
         {
             result.filterMode = FilterMode.Point;
@@ -122,6 +148,27 @@ namespace Chip8
 
             result.Apply(false);
         }
+        #endregion
+
+        #region Audio
+        private delegate float GenerateAudioWave(int time, float frequency, float sampleRate);
+        private event GenerateAudioWave OnGenerateWave;
+        private void OnAudioFilterRead(float[] data, int channels)
+        {
+            for (int i = 0; i < data.Length; i += channels)
+            {
+                data[i] = OnGenerateWave.Invoke(_timeIndex, audioFrequency, audioSampleRate);
+                if(channels == 2)
+                    data[i+1] = OnGenerateWave.Invoke(_timeIndex, audioFrequency, audioSampleRate);
+
+                _timeIndex++;
+
+                if (_timeIndex >= audioSampleRate * audioWavelength * _emulator.state.Sound)
+                {
+                    _timeIndex = 0;
+                }
+            }
+        }   
 
         public static float GenerateSine(int time, float frequency, float sampleRate = 44100f)
         {
@@ -132,7 +179,6 @@ namespace Chip8
         {
             return Mathf.Sign(GenerateSine(time, frequency, sampleRate));
         }
-
         #endregion
 
         #region Input
@@ -271,7 +317,7 @@ namespace Chip8
         public void InputStep(InputAction.CallbackContext context)
         {
             if (context.performed)
-                Step();
+                TogglePause();
         }
 
         public void InputReset(InputAction.CallbackContext context)
@@ -283,10 +329,9 @@ namespace Chip8
         #endregion
     }
 
-    public enum Chip8RunMode
+    public enum AudioEmulationType
     {
-        FixedUpdate,
-        Update,
-        Step
+        Sine,
+        Square
     }
 }
