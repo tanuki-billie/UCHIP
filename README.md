@@ -1,26 +1,33 @@
 # UCHIP - Unity-based CHIP-8 emulator
 
-UCHIP is an implementation of the CHIP-8 interpreter in the Unity game engine. The code is structured so that this can be used as a general reference C# CHIP-8 implementation as well.
+UCHIP is an implementation of the CHIP-8 interpreter originally made for the Cosmac VIP in 1977. This allows users to place CHIP-8 programs and games inside thier Unity programs.
 
-# Implementation
+## Current support
 
-UCHIP is implemented in two classes.
+Currently, UCHIP supports CHIP-8 mainly. SCHIP v1.1 (CHIP-48) support is experimental. You can change between three interpreter modes:
 
-## Chip8.cs
+`NOTE: This does not change what instructions the interpreter supports. It merely changes the behavior of some instructions to match that specific machine.`
 
-Chip8.cs is the main class, and houses all of the emulation code for the CHIP-8. ROM loading, input handling, drawing, and sound are not directly handled here.
+- Cosmac VIP
+- SCHIP v1.1 (HP-48)
+- Octo
 
-## Chip8MonoBehaviour.cs
+## Project goals
 
-Chip8MonoBehaviour.cs houses all of the Unity-specific implementations of the CHIP-8 code, and allows for a few features including custom colors and support for Unity's new input system.
+On occasion, updates are made to UCHIP to make it slightly better. It's not a high-maintenance program, so I tend to just leave it be. Future things I'd love to implement are:
 
-### Additional goals
-- Implement CHIP-48 / XO-CHIP support
-- Refactor `Chip8MonoBehaviour.cs` to streamline emulation process
-- Ensure that `Chip8.cs` is Unity-agnostic so that it can be used in non-Unity projects
-- Potentially split up `Chip8.cs` for better readability.
+- XO-CHIP (Octo program) support
+- Better frontend
+- Save states
+- Debugging capabilities
+- Mobile support
+- Per-game customizable controls
+- Performance improvements
 
-# Credits & Sources
+## Credits & Sources
 
 1. https://github.com/mattmikolay/chip-8 for a lot of documentation and references
 2. http://devernay.free.fr/hacks/chip8/C8TECH10.HTM for reference
+3. https://chip-8.github.io/ for documentation and resources on CHIP-8, SCHIP, and Octo
+4. https://github.com/JohnEarnest/Octo for help with writing and understanding CHIP programs
+

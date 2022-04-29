@@ -12,7 +12,6 @@ namespace Chip8
 
         public void SetPixel(int x, int y, bool lores = false)
         {
-            UnityEngine.Debug.Log($"setting pixel {x}, {y}");
             if(lores)
             {
                 pixels[x * 2, y * 2] ^= 1;
@@ -66,7 +65,6 @@ namespace Chip8
 
         public byte DrawLoresSpriteHires(int x, int y, int n, byte[] sprite)
         {
-            UnityEngine.Debug.Log("hi");
             byte rowsSet = 0;
             for (var sy = 0; sy < n; sy++)
             {
@@ -78,7 +76,6 @@ namespace Chip8
                     {
                         var rawX = (x + sx) % WIDTH;
                         var rawY = (y + sy);
-                        UnityEngine.Debug.Log($"pixel coords: {rawX}, {rawY}");
                         if (doWraparound)
                         {
                             rawY %= HEIGHT;

@@ -381,7 +381,6 @@ namespace Chip8
 
             if (data.N > 0 || !state.Display.hiresMode)
             {
-                UnityEngine.Debug.Log($"Drawing lores sprite (to be sure, N is {data.N})");
                 var sprite = state.Memory[state.I..(state.I + data.N)];
                 if(state.Display.hiresMode)
                     setFlags = state.Display.DrawLoresSpriteHires(posX, posY, data.N, sprite);
@@ -390,7 +389,6 @@ namespace Chip8
             }
             else
             {
-                UnityEngine.Debug.Log("Drawing hires sprite");
                 var sprData = state.Memory[state.I..(state.I + 32)];
                 ushort[] sprite = new ushort[16];
 
@@ -456,7 +454,7 @@ namespace Chip8
             catch (KeyNotFoundException)
             {
                 // there's nothing to do here except throw another exception
-                throw new IllegalOpcodeException($"Illegal misc opcode {data.opcode:X4} & PC = {state.PC}", data.opcode);
+                throw new IllegalOpcodeException($"Illegal misc opcode {data.opcode:X4} @ PC = {state.PC}", data.opcode);
             }
         }
         #endregion
