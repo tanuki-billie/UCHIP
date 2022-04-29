@@ -168,9 +168,11 @@ namespace Chip8
             }
 
             // Clear display
-            for (var y = 0; y < 32; y++)
-                for (var x = 0; x < 64; x++)
-                    state.Display[x, y] = 0;
+            //for (var y = 0; y < 32; y++)
+            //    for (var x = 0; x < 64; x++)
+            //        state.Display[x, y] = 0;
+
+            state.Display.Clear();
             WriteFontset();
 
             // Reset timers
@@ -224,9 +226,7 @@ namespace Chip8
             switch (data.NN)
             {
                 case 0xE0:
-                    for (var x = 0; x < 64; x++)
-                        for (var y = 0; y < 32; y++)
-                            state.Display[x, y] = 0;
+                    state.Display.Clear();
                     Draw = true;
                     break;
                 case 0xEE:
@@ -344,24 +344,35 @@ namespace Chip8
         private void DrawSprite(Opcode data)
         {
             // Oh boy.
-            state.V[0xF] = 0;
 
+            // New SCHIP compliant code.
+            UnityEngine.Debug.Log("Drawing!");
             var posX = state.V[data.X];
             var posY = state.V[data.Y];
+            var sprite = state.Memory[state.I..(state.I + data.N)];
+            var setFlags = state.Display.DrawSpriteLores(posX, posY, data.N, sprite);
 
-            for (var y = 0; y < data.N; y++)
-            {
-                byte pixel = state.Memory[state.I + y];
-                for (var x = 0; x < 8; x++)
-                {
-                    if ((pixel & (0x80 >> x)) != 0)
-                    {
-                        if (state.Display[(posX + x) % 64, (posY + y) % 32] == 1)
-                            state.V[0xF] = 1;
-                        state.Display[(posX + x) % 64, (posY + y) % 32] ^= 1;
-                    }
-                }
-            }
+            state.V[0xF] = (byte)(setFlags ? 1 : 0);
+
+            // Old CHIP-8 only mode.
+            //state.V[0xF] = 0;
+
+            //var posX = state.V[data.X];
+            //var posY = state.V[data.Y];
+
+            //for (var y = 0; y < data.N; y++)
+            //{
+            //    byte pixel = state.Memory[state.I + y];
+            //    for (var x = 0; x < 8; x++)
+            //    {
+            //        if ((pixel & (0x80 >> x)) != 0)
+            //        {
+            //            if (state.Display[(posX + x) % 64, (posY + y) % 32] == 1)
+            //                state.V[0xF] = 1;
+            //            state.Display[(posX + x) % 64, (posY + y) % 32] ^= 1;
+            //        }
+            //    }
+            //}
             Draw = true;
         }
         /// <summary>
@@ -682,7 +693,8 @@ namespace Chip8
         public byte Delay, Sound, SP;
         public ushort[] Stack;
         public bool[] Input;
-        public byte[,] Display;
+        //public byte[,] Display;
+        public Chip8Display Display;
 
         public EmulationState(Chip8InterpreterMode settings = Chip8InterpreterMode.Schip)
         {
@@ -691,7 +703,7 @@ namespace Chip8
             I = PC = 0;
             Delay = Sound = SP = 0;
             Input = new bool[16];
-            Display = new byte[64, 32];
+            Display = new Chip8Display(false);
             Stack = settings == Chip8InterpreterMode.CosmacVIP ? new ushort[12] : new ushort[16];
         }
     }

@@ -36,7 +36,7 @@ namespace Chip8
 
         private void Start()
         {
-            displayTexture = new Texture2D(64, 32);
+            displayTexture = new Texture2D(128, 64);
             // Setup AudioSource
             _source = gameObject.AddComponent<AudioSource>();
             _source.playOnAwake = false;
@@ -86,7 +86,7 @@ namespace Chip8
             {
                 _emulator.Cycle();
                 if (_emulator.Draw)
-                    RenderChipFrame(ref displayTexture, _emulator.state.Display, backgroundColor, foregroundColor);
+                    RenderChipFrame(ref displayTexture, _emulator.state.Display.pixels, backgroundColor, foregroundColor);
                 display.material.mainTexture = displayTexture;
             }
         }
